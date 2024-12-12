@@ -1,0 +1,36 @@
+from django.db import models
+
+# Create your models here.
+class SchoolData(models.Model):
+    school_year = models.CharField(max_length=7)
+    agency_type = models.CharField(max_length=50)
+    cesa = models.CharField(max_length=10)
+    county = models.CharField(max_length=50)
+    district_code = models.CharField(max_length=10)
+    school_code = models.CharField(max_length=10)
+    grade_group = models.CharField(max_length=50)
+    charter_ind = models.CharField(max_length=4)
+    district_name = models.CharField(max_length=100)
+    school_name = models.CharField(max_length=100)
+    group_by = models.CharField(max_length=50)
+    group_by_value = models.CharField(max_length=200)
+    student_count = models.CharField(max_length=20)
+    percent_of_group = models.CharField(max_length=20)
+    place = models.CharField(max_length=100, null=True, blank=True)
+
+class TransformedSchoolData(models.Model):
+    school_year = models.CharField(max_length=7)
+    agency_type = models.CharField(max_length=50)
+    cesa = models.CharField(max_length=10)
+    county = models.CharField(max_length=50)
+    district_code = models.CharField(max_length=10)
+    school_code = models.CharField(max_length=10)
+    grade_group = models.CharField(max_length=50)
+    charter_ind = models.CharField(max_length=4)
+    district_name = models.CharField(max_length=100)
+    school_name = models.CharField(max_length=100)
+    group_by = models.CharField(max_length=50)
+    group_by_value = models.CharField(max_length=200)
+    student_count = models.CharField(max_length=20)
+    percent_of_group = models.CharField(max_length=20)
+    place = models.CharField(max_length=100, null=True, blank=True)
