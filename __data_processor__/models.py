@@ -1,5 +1,12 @@
 from django.db import models
 
+class Stratification(models.Model):
+    group_by = models.CharField(max_length=100, default="Default Group")
+    group_by_value = models.CharField(max_length=200, default="Default Group")
+    label_name = models.CharField(max_length=200, default="Default Group")
+
+    def __str__(self):
+        return f"{self.group_by} - {self.group_by_value}"
 # Create your models here.
 class SchoolData(models.Model):
     school_year = models.CharField(max_length=7)
@@ -17,6 +24,7 @@ class SchoolData(models.Model):
     student_count = models.CharField(max_length=20)
     percent_of_group = models.CharField(max_length=20)
     place = models.CharField(max_length=100, null=True, blank=True)
+    stratification = models.ForeignKey(Stratification, on_delete=models.SET_NULL, null=True, blank=True)
 
 class TransformedSchoolData(models.Model):
     year = models.CharField(max_length=7)
@@ -28,4 +36,16 @@ class TransformedSchoolData(models.Model):
 
     class Meta:
         ordering = ['year']  # Default ordering by 'year' field
-    
+
+
+class MetopioDataTransformation(models.Model):
+    layer = models.CharField(max_length=50, default='Region')  # Constant value: 'Region'
+    geoid = models.CharField(max_length=50, default='fox-valley')  # Constant value: 'fox-valley'
+    topic = models.CharField(max_length=50, default='FVDEYLCV')  # Constant value: 'FVDEYLCV'
+    stratification = models.TextField(blank=True)  # To store stratification notes
+    period = models.CharField(max_length=20)  # Transformed SCHOOL_YEAR (e.g., 2023-24 → 2023-2024)
+    value = models.PositiveIntegerField()  # Derived from STUDENT_COUNT
+
+    class Meta:
+        verbose_name = 'Metopio Data Transformation'
+        verbose_name_plural = 'Metopio Data Transformations'

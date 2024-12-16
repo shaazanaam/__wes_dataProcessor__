@@ -4,7 +4,7 @@ import time
 import os
 import csv
 from django.urls import reverse  # For generating URLs
-from .models import SchoolData ,TransformedSchoolData
+from .models import SchoolData, TransformedSchoolData, Stratification, MetopioDataTransformation
 from .forms import UploadFileForm
 from django.http import HttpResponse
 import logging
@@ -20,7 +20,6 @@ def data_processor_home(request):
     if request.method == 'POST':
         # Check which transformation type was selected
         transformation_type = request.POST.get('transformation_type', 'Statewide')  # Default to 'Statewide'
-
          # Instantiate the DataTransformer and apply the transformation
         transformer = DataTransformer(request)
         success = transformer.apply_transformation(transformation_type)
@@ -46,6 +45,8 @@ def transformation_success(request):
     # Retrieve the appropriate transformed data based on the transformation type
     if transformation_type == 'Tri-County':
         data_list = TransformedSchoolData.objects.filter(place='Tri-County')
+    elif transformation_type == 'Tri-County-Layer':
+        data_list = MetopioDataTransformation.objects.all()
     else:
         data_list = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if type is not 'Tri-County'
     
@@ -61,17 +62,45 @@ def transformation_success(request):
         'transformation_type': transformation_type,  # The transformation type (Statewide or Tri-County)
     })
 
-def handle_uploaded_file(f):
+def handle_uploaded_file(f, stratifications_file=None):
     #Save to a Directory in Your Project: Create a directory within your project to 
     # store uploaded files. For example, create a directory called uploads in your project root.
     upload_dir = os.path.join(settings.BASE_DIR, 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f.name)
     
+    # Save the uplaoded file
     with open(file_path, 'wb+') as destination:
         for chunk in f.chunks():
             destination.write(chunk)
     logger.info(f"File uploaded successfully to {file_path}")
+
+#  If the stratification file is provided Process it 
+    strat_map = {}
+    if stratifications_file:
+        strat_file_path = os.path.join(upload_dir, stratifications_file.name)
+        with open(strat_file_path, 'wb+') as destination:
+            for chunk in stratifications_file.chunks():
+                destination.write(chunk)
+        logger.info(f"Stratification file uploaded successfully to {strat_file_path}")
+
+    # Load stratifications into the database
+        try:
+                with open(strat_file_path, 'r') as strat_file:
+                    strat_reader = csv.DictReader(strat_file)
+                    for row in strat_reader:
+                        group_by = row.get('GROUP_BY', 'Unknown')
+                        group_by_value = row.get('GROUP_BY_VALUE', 'Unknown')
+                        label_name = row.get('Stratification', 'Error')
+                        strat, created = Stratification.objects.get_or_create(
+                            group_by=group_by,
+                            group_by_value=group_by_value,
+                            label_name=label_name
+                        )
+                        strat_map[f"{group_by}{group_by_value}"] = strat.label_name
+        except Exception as e:
+                logger.error(f"Error processing stratifications file: {e}")
+                raise
 
     # Process the file 
     retries = 5
@@ -79,15 +108,22 @@ def handle_uploaded_file(f):
         try:
             with open(file_path, 'r') as file:
                 reader = csv.DictReader(file)
-                data = []
-
                 #Clear the existing data in the SchoolData table to avoid duplicates
                 # THIS ENSIRES THAT THE DATA BASE IS CLEANED BEFORE INSERTING NEW DATA
                 SchoolData.objects.all().delete()
+                data = []
+                strat_map ={
+                    # Build the stratification map
+                    f"{strat.group_by}{strat.group_by_value}": strat
+                    for strat in Stratification.objects.all()
+                }
 
                 #Parse the file and prepare the data for insertion
                 for row in reader:
-                    if row['STUDENT_COUNT'] == '*':
+                    combined_key = row['GROUP_BY'] + row['GROUP_BY_VALUE']
+                    stratification = strat_map.get(combined_key)
+
+                    if row['STUDENT_COUNT'] == '*' or row['GROUP_BY_VALUE'] == '[Data Suppressed]':
                         continue
                     data.append(SchoolData(
                         school_year=row['SCHOOL_YEAR'],
@@ -103,7 +139,8 @@ def handle_uploaded_file(f):
                         group_by=row['GROUP_BY'],
                         group_by_value=row['GROUP_BY_VALUE'],
                         student_count=row['STUDENT_COUNT'],
-                        percent_of_group=row['PERCENT_OF_GROUP']
+                        percent_of_group=row['PERCENT_OF_GROUP'],
+                        stratification=stratification
                     ))
                 
                 #Insert new data into the database
@@ -127,10 +164,13 @@ def upload_file(request):
 
     if request.method == 'POST':
         # Handle file upload
-        if request.FILES.get('file'):  # Check if a file is uploaded
+        file = request.FILES.get('file')
+        stratifications_file = request.FILES.get('stratifications_file') # get the stratification file if provided
+
+        if file:  # Check if a file is uploaded
             form = UploadFileForm(request.POST, request.FILES)
             if form.is_valid():
-                handle_uploaded_file(request.FILES['file'])  # Process the file with the helper function
+                handle_uploaded_file(file, stratifications_file=stratifications_file)  # Process the uploaded file
                 # Redirect to the success page or back to upload with a success message
                 return redirect(f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation.")
 
@@ -138,7 +178,10 @@ def upload_file(request):
         transformation_type = request.POST.get('transformation_type')
         if transformation_type:
             transformer = DataTransformer(request)  # Create an instance of the DataTransformer class
-            success = transformer.apply_transformation(transformation_type)  # Apply the transformation
+            if transformation_type == 'Tri-County-Layer':
+                success = transformer.apply_tri_county_layer_transformation()  # Apply the Tri-County Layer transformation
+            else :
+                success = transformer.apply_transformation(transformation_type)  # Apply the transformation
 
             # If transformation was successful, redirect to the success page
             if success:

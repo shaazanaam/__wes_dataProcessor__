@@ -2,7 +2,8 @@
 
 {% block content %}
     <h1>Upload CSV</h1>
-    <p>{{details}}</p>
+    <p>{{ details }}</p>
+    
     <!-- File upload form -->
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
@@ -10,20 +11,22 @@
         
         <button type="submit">Upload</button>
     </form>
-
- 
-    
     <br>
 
-    <!-- Run Transformation form (if needed) -->
+    <!-- Existing transformation forms -->
     <form method="post">
         {% csrf_token %}
         <button type="submit" name="transformation_type" value="Statewide">Run Statewide Transformation</button>
     </form>
-
     <form method="post">
         {% csrf_token %}
         <button type="submit" name="transformation_type" value="Tri-County">Run Tri-County Transformation</button>
     </form>
-      
+    <br>
+
+    <!-- New transformation form for Tri-County Layer -->
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="transformation_type" value="Tri-County-Layer">Run Tri-County Layer Transformation</button>
+    </form>
 {% endblock %}
