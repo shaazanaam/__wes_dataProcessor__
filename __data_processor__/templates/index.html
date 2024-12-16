@@ -1,0 +1,16 @@
+{% extends "base_generic.html" %}
+
+{% block title %}Data Processor Home{% endblock %}
+
+{% block content %}
+    <h1>School Data Processor</h1>
+    <p>Select a transformation type to process your data in the existing database:
+        The Other option is to go to the Upload tab and then Upload the CSV file and run the transformation
+    </p>
+      <!-- Form to select transformation type -->
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="transformation_type" value="Statewide">Run Statewide Transformation</button>
+        <button type="submit" name="transformation_type" value="Tri-County">Run Tri-County Transformation</button>
+    </form>
+{% endblock %}

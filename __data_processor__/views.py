@@ -3,7 +3,7 @@ from django.db.utils import OperationalError
 import time
 import os
 import csv
-from django.shortcuts import render
+from django.urls import reverse  # For generating URLs
 from .models import SchoolData ,TransformedSchoolData
 from .forms import UploadFileForm
 from django.http import HttpResponse
@@ -12,33 +12,54 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 import pandas as pd
 from django.db import transaction
-
-
-def home(request):
-    return HttpResponse("""
-        <html>
-        <head><title>Home Page</title></head>
-        <body>
-            <h1>Welcome to the School Data Processor!</h1>
-            <a href="/data_processor/">Go to Data Processor Home</a>
-        </body>
-        </html>
-    """)
-
+from django.core.paginator import Paginator
+from django.contrib import messages  # For adding feedback messages
+from .transformers import DataTransformer
 
 def data_processor_home(request):
     if request.method == 'POST':
-        transform_data()
-        return redirect('transformation_success')
-    return render(request, '__data_processor__/home.html')
+        # Check which transformation type was selected
+        transformation_type = request.POST.get('transformation_type', 'Statewide')  # Default to 'Statewide'
+
+         # Instantiate the DataTransformer and apply the transformation
+        transformer = DataTransformer(request)
+        success = transformer.apply_transformation(transformation_type)
+
+        # If transformation was successful, redirect to success page
+        if success:
+            return redirect(f'/data_processor/success/?type={transformation_type}')
+
+        # If transformation failed, stay on the same page to display the error
+        return redirect('/data_processor/')  # Or render the page with the error message
+
+    return render(request, 'index.html')
 
 ## Create a view and template to display a success message after the transformation 
+
 def transformation_success(request):
     # Example details we can customize this based on the needs
     details = "Transformation Completed Successfully. Check the Updated records in the database"
-    return render(request, '__data_processor__/success.html',{'message':'Transformation Completed Successfully!'})
 
+    # Determine the transformation type from the query parameter (default to 'Statewide')
+    transformation_type = request.GET.get('type', 'Statewide')  # Default to Statewide if not specified
 
+    # Retrieve the appropriate transformed data based on the transformation type
+    if transformation_type == 'Tri-County':
+        data_list = TransformedSchoolData.objects.filter(place='Tri-County')
+    else:
+        data_list = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if type is not 'Tri-County'
+    
+    # Paginate the results
+    paginator = Paginator(data_list, 20)  # Show 20 records per page
+    page_number = request.GET.get('page')  # Get the page number from the query parameters
+    data = paginator.get_page(page_number)  # Get the page object
+
+    # Return the rendered success page with the appropriate data
+    return render(request, '__data_processor__/success.html', {
+        'message': details,
+        'data': data,  # This is the paginated data
+        'transformation_type': transformation_type,  # The transformation type (Statewide or Tri-County)
+    })
 
 def handle_uploaded_file(f):
     #Save to a Directory in Your Project: Create a directory within your project to 
@@ -52,13 +73,19 @@ def handle_uploaded_file(f):
             destination.write(chunk)
     logger.info(f"File uploaded successfully to {file_path}")
 
-    # Process the file as before
+    # Process the file 
     retries = 5
     while retries > 0:
         try:
             with open(file_path, 'r') as file:
                 reader = csv.DictReader(file)
                 data = []
+
+                #Clear the existing data in the SchoolData table to avoid duplicates
+                # THIS ENSIRES THAT THE DATA BASE IS CLEANED BEFORE INSERTING NEW DATA
+                SchoolData.objects.all().delete()
+
+                #Parse the file and prepare the data for insertion
                 for row in reader:
                     if row['STUDENT_COUNT'] == '*':
                         continue
@@ -78,6 +105,9 @@ def handle_uploaded_file(f):
                         student_count=row['STUDENT_COUNT'],
                         percent_of_group=row['PERCENT_OF_GROUP']
                     ))
+                
+                #Insert new data into the database
+
                 SchoolData.objects.bulk_create(data)
                 logger.info(f"{len(data)} records inserted into the database")
                 break
@@ -90,92 +120,101 @@ def handle_uploaded_file(f):
                 logger.error(f"Error processing file: {e}")
                 raise
 
+# data_processor/views.py
 def upload_file(request):
+    message = ""  # Initialize the message variable
+    form = UploadFileForm()  # Initialize the form
+
     if request.method == 'POST':
-        form = UploadFileForm(request.POST, request.FILES)
-        if form.is_valid():
-            handle_uploaded_file(request.FILES['file'])
-            return render(request, '__data_processor__/success.html')
+        # Handle file upload
+        if request.FILES.get('file'):  # Check if a file is uploaded
+            form = UploadFileForm(request.POST, request.FILES)
+            if form.is_valid():
+                handle_uploaded_file(request.FILES['file'])  # Process the file with the helper function
+                # Redirect to the success page or back to upload with a success message
+                return redirect(f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation.")
+
+        # Handle transformation actions
+        transformation_type = request.POST.get('transformation_type')
+        if transformation_type:
+            transformer = DataTransformer(request)  # Create an instance of the DataTransformer class
+            success = transformer.apply_transformation(transformation_type)  # Apply the transformation
+
+            # If transformation was successful, redirect to the success page
+            if success:
+                return redirect(f"{reverse('transformation_success')}?type={transformation_type}")
+            else:
+                # If transformation failed, display an error message
+                message = "Transformation failed. Please try again."
+
     else:
-        form = UploadFileForm()
-    return render(request, '__data_processor__/upload.html', {'form': form})
+        form = UploadFileForm()  # Initialize the form if it's a GET request
+
+    # Get any message passed via query parameters
+    message = request.GET.get('message', message)  # Show the message if it exists
+    details = "Upload your file and select the transformation type."
+    return render(request, '__data_processor__/upload.html', {'form': form, 'message': message, 'details': details})
 
 
+def statewide_view(request):
+    transformation_type = request.GET.get('type')   # Default to 'Statewide' if not specified
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
 
-### Sample Transformation Logic
-def transform_data():
-    # Define the mapping dictionaries
-    school_code_to_city = {
-        '1234': 'Appleton',
-        '5678': 'Oshkosh',
-        # Add more mappings
-    }
+    """ View to display the statewide data """
+   # Simply fetching the transformed data from the data base 
+    data_list = TransformedSchoolData.objects.filter(place='WI') # Assuming the place is WI
+    paginator = Paginator(data_list, 20)  # Show 30 records per page
+    page_number = request.GET.get('page')
+    data = paginator.get_page(page_number)
+    return render(request, '__data_processor__/statewide.html', {
+        'data': data,
+        'transformation_type': transformation_type,  # The transformation type (Statewide or Tri-County)
+        })
 
-    school_code_to_zip = {
-        '1234': '54911',
-        '5678': '54901',
-        # Add more mappings
-    }
+def tri_county_view(request):
+    transformation_type = request.GET.get('type')  # Log the type
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
+    """ View to display the Tri-County data """
+    data_list = TransformedSchoolData.objects.filter(place='Tri-County')
+    paginator = Paginator(data_list, 20)  # Show 30 records per page
+    page_number = request.GET.get('page')
+    data = paginator.get_page(page_number)
+    return render(request, '__data_processor__/tricounty.html', {
+        'data': data,
+        'transformation_type': transformation_type
+    })
 
-    data = SchoolData.objects.all().exclude(student_count='*')
+##EXCEL HANDLE ##
 
-    transformed_data = []
-    for entry in data:
-        transformed_entry = TransformedSchoolData(
-            school_year=entry.school_year,
-            agency_type=entry.agency_type,
-            cesa=entry.cesa,
-            county=entry.county,
-            district_code=entry.district_code,
-            school_code=entry.school_code,
-            grade_group=entry.grade_group,
-            charter_ind=entry.charter_ind,
-            district_name=entry.district_name,
-            school_name=entry.school_name,
-            group_by=entry.group_by,
-            group_by_value=entry.group_by_value,
-            student_count=entry.student_count,
-            percent_of_group=entry.percent_of_group
-        )
-        # Apply transformations to transformed_entry.place
-        if entry.school_name == '[Statewide]':
-            transformed_entry.place = 'WI'
-        elif entry.county in ['Outagamie', 'Winnebago', 'Calumet'] and entry.school_name == '[Districtwide]':
-            transformed_entry.place = 'Tri-County'
-        elif entry.county in ['Outagamie', 'Winnebago', 'Calumet'] and entry.school_name == '[Districtwide]':
-            transformed_entry.place = f"{entry.county}, WI"
-        elif entry.county in ['Outagamie', 'Winnebago', 'Calumet'] and not entry.school_name.startswith('['):
-            city_name = school_code_to_city.get(entry.school_code, 'Unknown City')
-            transformed_entry.place = f"{city_name}, WI"
-        elif entry.county in ['Outagamie', 'Winnebago', 'Calumet'] and not entry.school_name.startswith('['):
-            zip_code_value = school_code_to_zip.get(entry.school_code, 'Unknown Zip')
-            transformed_entry.place = zip_code_value
-        elif entry.county in ['Outagamie', 'Winnebago', 'Calumet'] and not entry.school_name.startswith('['):
-            transformed_entry.place = "School District"
-        # Add other transformations as needed
-        transformed_data.append(transformed_entry)
+def generate_transformed_excel(transformation_type):
+    # Fetch the transformed data based on the transformation type
+    if transformation_type == 'Tri-County':
+        data = TransformedSchoolData.objects.filter(place='Tri-County')
+    else:
+        data = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if not Tri-County
+    
+    # Convert the QuerySet to a list of dictionaries
+    data_list = list(data.values())
 
-    TransformedSchoolData.objects.bulk_create(transformed_data)
+    # Create a Pandas DataFrame
+    df = pd.DataFrame(data_list)
 
-def generate_excel():
-    # Fetch the transformed data from the database
-    data = TransformedSchoolData.objects.all().values()
-    df = pd.DataFrame(data)
+    # Generate the Excel file name
+    excel_file = f'transformed_{transformation_type.lower()}_data.xlsx'
+    
+    # Use the context manager to handle the saving of the Excel file
+    with pd.ExcelWriter(excel_file, engine='xlsxwriter') as writer:
+        # Convert the DataFrame to an Excel object
+        df.to_excel(writer, sheet_name='Transformed Data', index=False)
 
-    # Create a Pandas Excel writer using XlsxWriter as the engine
-    excel_file = 'transformed_data.xlsx'
-    writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
-
-    # Convert the dataframe to an XlsxWriter Excel object
-    df.to_excel(writer, sheet_name='Transformed Data', index=False)
-
-    # Close the Pandas Excel writer and output the Excel file
-    writer.close()
-
+    # The file is automatically saved and closed when the context manager exits
     return excel_file
 
 def download_excel(request):
-    excel_file = generate_excel()
+    # Get the transformation type from the URL query parameter
+    transformation_type = request.GET.get('type', 'Statewide')  # Default to 'Statewide' if not specified
+
+    excel_file = generate_transformed_excel(transformation_type)
 
     # Serve the file as a download
     with open(excel_file, 'rb') as f:
@@ -183,27 +222,76 @@ def download_excel(request):
         response['Content-Disposition'] = f'attachment; filename={excel_file}'
         return response
 
-import csv
+## CSV HANDLE##
 
-def generate_csv():
-    # Fetch the transformed data from the database
-    data = TransformedSchoolData.objects.all().values()
-    csv_file = 'transformed_data.csv'
 
-    # Write the data to a CSV file
+def generate_transformed_csv(transformation_type):
+    # Fetch the transformed data based on the transformation type
+    if transformation_type == 'Tri-County':
+        data = TransformedSchoolData.objects.filter(place='Tri-County')
+    else:
+        data = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if not Tri-County
+    
+    # Convert the QuerySet to a list of dictionaries and exclude the id field
+    data_list = [
+        {key.upper(): value for key, value in row.items() if key != 'id'}
+        for row in data.values()
+    ]
+    
+    # Get the field names (keys) from the first item, converted to uppercase
+    fieldnames = data_list[0].keys() if data_list else []
+
+    # Generate CSV file
+    csv_file = f'transformed_{transformation_type.lower()}_data.csv'
     with open(csv_file, 'w', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=data[0].keys())
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        for row in data:
-            writer.writerow(row)
-
+        writer.writerows(data_list)
+    
     return csv_file
 
 def download_csv(request):
-    csv_file = generate_csv()
+    # Get the transformation type from the URL query parameter
+    transformation_type = request.GET.get('type', 'Statewide')  # Default to 'Statewide' if not specified
+
+    csv_file = generate_transformed_csv(transformation_type)
 
     # Serve the file as a download
     with open(csv_file, 'rb') as f:
         response = HttpResponse(f.read(), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename={csv_file}'
         return response
+
+
+
+
+
+
+# def upload_file(request):
+#     message = ""  # Initialize the message variable
+#     form = UploadFileForm()  # Initialize the form
+
+#     if request.method == 'POST':
+#         # Handle file upload
+#         if request.FILES.get('file'):  # Check if a file is uploaded
+#             form = UploadFileForm(request.POST, request.FILES)
+#             if form.is_valid():
+#                 handle_uploaded_file(request.FILES['file'])  # Assuming this function processes the file
+#                 # Redirect to the success page or back to upload with a success message
+#                 return redirect(f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation.")
+
+#         # Handle transformation actions
+#         transformation_type = request.POST.get('transformation_type')
+#         if transformation_type == 'Statewide':
+#             transform_statwide_data(request)  # Trigger the statewide transformation function
+#             return redirect(f"{reverse('transformation_success')}?type=Statewide")
+#         elif transformation_type == 'Tri-County':
+#             transform_Tri_County_data(request)  # Trigger the Tri-County transformation function
+#             return redirect(f"{reverse('transformation_success')}?type=Tri-County")
+
+#     else:
+#         form = UploadFileForm()  # Initialize the form if it's a GET request
+
+#     # Get any message passed via query parameters
+#     message = request.GET.get('message', "")
+#     return render(request, '__data_processor__/upload.html', {'form': form, 'message': message})

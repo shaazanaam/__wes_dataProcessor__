@@ -1,0 +1,54 @@
+YEAR,YEAR_RANGE,PLACE,GROUP_BY,GROUP_BY_VALUE,STUDENT_COUNT
+2022,2022-23,WI,All Students,All Students,822804
+2022,2022-23,WI,Disability,Autism,15207
+2022,2022-23,WI,Disability,Blind and Visually Impaired,453
+2022,2022-23,WI,Disability,Deaf or Hard of Hearing,1657
+2022,2022-23,WI,Disability,Deafblind,11
+2022,2022-23,WI,Disability,Emotional Behavioral Disability,10041
+2022,2022-23,WI,Disability,Intellectual Disability,5828
+2022,2022-23,WI,Disability,Not IDEA Eligible or No Disability,700616
+2022,2022-23,WI,Disability,Orthopedic Impairment,693
+2022,2022-23,WI,Disability,Other Health Impairment,25457
+2022,2022-23,WI,Disability,Significant Developmental Delay,11423
+2022,2022-23,WI,Disability,Specific Learning Disability,24850
+2022,2022-23,WI,Disability,Speech or Language Impairment,26296
+2022,2022-23,WI,Disability,Traumatic Brain Injury,271
+2022,2022-23,WI,Disability,Unknown,1
+2022,2022-23,WI,Disability Status,SwD,122187
+2022,2022-23,WI,Disability Status,SwoD,700616
+2022,2022-23,WI,Disability Status,Unknown,1
+2022,2022-23,WI,Economic Status,Econ Disadv,339176
+2022,2022-23,WI,Economic Status,Not Econ Disadv,483626
+2022,2022-23,WI,Economic Status,Unknown,2
+2022,2022-23,WI,EL Status,EL,51638
+2022,2022-23,WI,EL Status,Eng Prof,771098
+2022,2022-23,WI,EL Status,Unknown,68
+2022,2022-23,WI,Gender,Female,398216
+2022,2022-23,WI,Gender,Male,424235
+2022,2022-23,WI,Gender,Non-binary,353
+2022,2022-23,WI,Grade Level,1,55233
+2022,2022-23,WI,Grade Level,10,66388
+2022,2022-23,WI,Grade Level,11,63656
+2022,2022-23,WI,Grade Level,12,65797
+2022,2022-23,WI,Grade Level,2,55140
+2022,2022-23,WI,Grade Level,3,55767
+2022,2022-23,WI,Grade Level,4,56235
+2022,2022-23,WI,Grade Level,5,56761
+2022,2022-23,WI,Grade Level,6,57320
+2022,2022-23,WI,Grade Level,7,58727
+2022,2022-23,WI,Grade Level,8,61180
+2022,2022-23,WI,Grade Level,9,66556
+2022,2022-23,WI,Grade Level,K3,1613
+2022,2022-23,WI,Grade Level,K4,44284
+2022,2022-23,WI,Grade Level,KG,53432
+2022,2022-23,WI,Grade Level,PK,4715
+2022,2022-23,WI,Migrant Status,Migrant,225
+2022,2022-23,WI,Migrant Status,Not Migrant,822579
+2022,2022-23,WI,Race/Ethnicity,Amer Indian,8469
+2022,2022-23,WI,Race/Ethnicity,Asian,34714
+2022,2022-23,WI,Race/Ethnicity,Black,71767
+2022,2022-23,WI,Race/Ethnicity,Hispanic,111830
+2022,2022-23,WI,Race/Ethnicity,Pacific Isle,636
+2022,2022-23,WI,Race/Ethnicity,Two or More,42343
+2022,2022-23,WI,Race/Ethnicity,Unknown,1
+2022,2022-23,WI,Race/Ethnicity,White,553044

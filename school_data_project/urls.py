@@ -29,5 +29,5 @@ urlpatterns += [
 ]
 
 urlpatterns += [
-    path('', views.home, name='home'),  ## This is the default view
+    path('', views.data_processor_home, name='home'),  ## This is the default view
 ]
