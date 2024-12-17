@@ -4,7 +4,7 @@ import time
 import os
 import csv
 from django.urls import reverse  # For generating URLs
-from .models import SchoolData, TransformedSchoolData, Stratification, MetopioDataTransformation
+from .models import SchoolData, TransformedSchoolData, Stratification, MetopioTriCountyLayerTransformation
 from .forms import UploadFileForm
 from django.http import HttpResponse
 import logging
@@ -19,7 +19,7 @@ from .transformers import DataTransformer
 def data_processor_home(request):
     if request.method == 'POST':
         # Check which transformation type was selected
-        transformation_type = request.POST.get('transformation_type', 'Statewide')  # Default to 'Statewide'
+        transformation_type = request.POST.get('transformation_type', 'Statewide V01')  # Default to 'Statewide'
          # Instantiate the DataTransformer and apply the transformation
         transformer = DataTransformer(request)
         success = transformer.apply_transformation(transformation_type)
@@ -40,15 +40,20 @@ def transformation_success(request):
     details = "Transformation Completed Successfully. Check the Updated records in the database"
 
     # Determine the transformation type from the query parameter (default to 'Statewide')
-    transformation_type = request.GET.get('type', 'Statewide')  # Default to Statewide if not specified
-
+    transformation_type = request.GET.get('type', 'Statewide V01')  # Default to Statewide if not specified
+    # Instantiate DataTransformer properly with the request
+    # Transformer = DataTransformer(request)
     # Retrieve the appropriate transformed data based on the transformation type
-    if transformation_type == 'Tri-County':
-        data_list = TransformedSchoolData.objects.filter(place='Tri-County')
-    elif transformation_type == 'Tri-County-Layer':
-        data_list = MetopioDataTransformation.objects.all()
-    else:
-        data_list = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if type is not 'Tri-County'
+    # Run the transformation explicitly
+    if transformation_type == 'Statewide V01':
+        transformer = DataTransformer(request)
+        transformer.apply_transformation('Statewide V01')
+        data_list = TransformedSchoolData.objects.filter(place='WI')
+        return redirect(reverse('statewide_view'))  # Replace 'statewide_view' with the actual name of your URL
+    elif  transformation_type == 'Tri-County':
+            transformer = DataTransformer(request)
+            transformer.apply_tri_county_layer_transformation()
+            data_list = MetopioTriCountyLayerTransformation.objects.all()
     
     # Paginate the results
     paginator = Paginator(data_list, 20)  # Show 20 records per page
@@ -178,7 +183,7 @@ def upload_file(request):
         transformation_type = request.POST.get('transformation_type')
         if transformation_type:
             transformer = DataTransformer(request)  # Create an instance of the DataTransformer class
-            if transformation_type == 'Tri-County-Layer':
+            if transformation_type == 'Tri-County':
                 success = transformer.apply_tri_county_layer_transformation()  # Apply the Tri-County Layer transformation
             else :
                 success = transformer.apply_transformation(transformation_type)  # Apply the transformation
@@ -215,13 +220,19 @@ def statewide_view(request):
         })
 
 def tri_county_view(request):
-    transformation_type = request.GET.get('type')  # Log the type
+    transformation_type = request.GET.get('type','Tri-County')  # Default to the TriCountry Layer if not specified
     print(f"Query Parameters: {request.GET}")  # Log query parameters
+    # Fetch the data from the Metopio Data Transformation model
+    DataTransformer.apply_tri_county_layer_transformation(request)
+    data_list = MetopioTriCountyLayerTransformation.objects.all()
     """ View to display the Tri-County data """
-    data_list = TransformedSchoolData.objects.filter(place='Tri-County')
+    
+    # Pagiante the Results
     paginator = Paginator(data_list, 20)  # Show 30 records per page
     page_number = request.GET.get('page')
     data = paginator.get_page(page_number)
+
+    # pass the data to the template file
     return render(request, '__data_processor__/tricounty.html', {
         'data': data,
         'transformation_type': transformation_type
@@ -232,7 +243,7 @@ def tri_county_view(request):
 def generate_transformed_excel(transformation_type):
     # Fetch the transformed data based on the transformation type
     if transformation_type == 'Tri-County':
-        data = TransformedSchoolData.objects.filter(place='Tri-County')
+        data = MetopioTriCountyLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if not Tri-County
     
@@ -271,7 +282,7 @@ def download_excel(request):
 def generate_transformed_csv(transformation_type):
     # Fetch the transformed data based on the transformation type
     if transformation_type == 'Tri-County':
-        data = TransformedSchoolData.objects.filter(place='Tri-County')
+        data = MetopioTriCountyLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(place='WI')  # Default to Statewide if not Tri-County
     
@@ -306,35 +317,3 @@ def download_csv(request):
         return response
 
 
-
-
-
-
-# def upload_file(request):
-#     message = ""  # Initialize the message variable
-#     form = UploadFileForm()  # Initialize the form
-
-#     if request.method == 'POST':
-#         # Handle file upload
-#         if request.FILES.get('file'):  # Check if a file is uploaded
-#             form = UploadFileForm(request.POST, request.FILES)
-#             if form.is_valid():
-#                 handle_uploaded_file(request.FILES['file'])  # Assuming this function processes the file
-#                 # Redirect to the success page or back to upload with a success message
-#                 return redirect(f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation.")
-
-#         # Handle transformation actions
-#         transformation_type = request.POST.get('transformation_type')
-#         if transformation_type == 'Statewide':
-#             transform_statwide_data(request)  # Trigger the statewide transformation function
-#             return redirect(f"{reverse('transformation_success')}?type=Statewide")
-#         elif transformation_type == 'Tri-County':
-#             transform_Tri_County_data(request)  # Trigger the Tri-County transformation function
-#             return redirect(f"{reverse('transformation_success')}?type=Tri-County")
-
-#     else:
-#         form = UploadFileForm()  # Initialize the form if it's a GET request
-
-#     # Get any message passed via query parameters
-#     message = request.GET.get('message', "")
-#     return render(request, '__data_processor__/upload.html', {'form': form, 'message': message})

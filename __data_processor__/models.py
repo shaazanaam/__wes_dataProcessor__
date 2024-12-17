@@ -38,7 +38,7 @@ class TransformedSchoolData(models.Model):
         ordering = ['year']  # Default ordering by 'year' field
 
 
-class MetopioDataTransformation(models.Model):
+class MetopioTriCountyLayerTransformation(models.Model):
     layer = models.CharField(max_length=50, default='Region')  # Constant value: 'Region'
     geoid = models.CharField(max_length=50, default='fox-valley')  # Constant value: 'fox-valley'
     topic = models.CharField(max_length=50, default='FVDEYLCV')  # Constant value: 'FVDEYLCV'
@@ -49,3 +49,4 @@ class MetopioDataTransformation(models.Model):
     class Meta:
         verbose_name = 'Metopio Data Transformation'
         verbose_name_plural = 'Metopio Data Transformations'
+        ordering = ['period', 'stratification']  # Add this line

@@ -16,7 +16,7 @@
     <!-- Existing transformation forms -->
     <form method="post">
         {% csrf_token %}
-        <button type="submit" name="transformation_type" value="Statewide">Run Statewide Transformation</button>
+        <button type="submit" name="transformation_type" value="Statewide V01">Run Statewide V01 Transformation</button>
     </form>
     <form method="post">
         {% csrf_token %}
@@ -24,9 +24,5 @@
     </form>
     <br>
 
-    <!-- New transformation form for Tri-County Layer -->
-    <form method="post">
-        {% csrf_token %}
-        <button type="submit" name="transformation_type" value="Tri-County-Layer">Run Tri-County Layer Transformation</button>
-    </form>
+    
 {% endblock %}

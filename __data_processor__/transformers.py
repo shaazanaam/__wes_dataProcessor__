@@ -1,6 +1,6 @@
 # data_processor/transformers.py
 
-from .models import SchoolData, TransformedSchoolData,MetopioDataTransformation
+from .models import SchoolData, TransformedSchoolData,MetopioTriCountyLayerTransformation
 from django.db import transaction
 import logging
 
@@ -67,10 +67,10 @@ class DataTransformer:
 
     def apply_transformation(self, transformation_type):
         """ Apply the selected transformation type """
-        if transformation_type == 'Statewide':
+        if transformation_type == 'Statewide V01':
             return self.transform_statewide()
         elif transformation_type == 'Tri-County':
-            return self.transform_tri_county()
+            return self.apply_tri_county_layer_transformation()
         else:
             messages.error(self.request, 'Unknown transformation type.')
             return False
@@ -121,7 +121,7 @@ class DataTransformer:
 
             # Prepare transformed data for bulk insertion
             transformed_data = [
-                MetopioDataTransformation(
+                MetopioTriCountyLayerTransformation(
                     layer=data["layer"],
                     geoid=data["geoid"],
                     topic=data["topic"],
@@ -134,8 +134,8 @@ class DataTransformer:
 
             # Insert transformed data in bulk
             with transaction.atomic():
-                MetopioDataTransformation.objects.all().delete()  # Clear existing data
-                MetopioDataTransformation.objects.bulk_create(transformed_data)
+                MetopioTriCountyLayerTransformation.objects.all().delete()  # Clear existing data
+                MetopioTriCountyLayerTransformation.objects.bulk_create(transformed_data)
 
             logger.info(f"Successfully transformed {len(transformed_data)} records.")
             return True
