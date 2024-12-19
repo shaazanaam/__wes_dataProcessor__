@@ -97,15 +97,19 @@ class DataTransformer:
                 # Transform the period field
                 school_year = record.school_year
                 if '-' in school_year:
-                    start_year, end_year = school_year.split('-')
+                    start_year, end_year = school_year.split('-')  # unpacks the tuple
                     period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
                 else:
                     period = school_year
 
                 # Default to "Error" if stratification is None
+                # we are reaching out to the related Stratification object via the Foreign Key relation 
+                # and getting the label_name attribute
                 stratification = record.stratification.label_name if record.stratification else "Error"
 
                 # Group by stratification and period
+                # The strat_key uniquely represents the combination of stratification and period
+                # grouped data is a dictionary where key are stray_key tuples
                 strat_key = (stratification, period)
                 if strat_key not in grouped_data:
                     grouped_data[strat_key] = {
@@ -117,6 +121,8 @@ class DataTransformer:
                         "value": int(record.student_count) if record.student_count.isdigit() else 0,
                     }
                 else:
+                # if the strat_key is already in the grouped_data dictionary, we just add the student_count  from the current record
+                # This ensures that all student_count values for the records with the same stratification and period are summed up
                     grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
 
             # Prepare transformed data for bulk insertion
