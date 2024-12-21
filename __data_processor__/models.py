@@ -13,6 +13,8 @@ class CountyGEOID(models.Model):
     layer = models.CharField(max_length=50)
     name = models.CharField(max_length=100)
     geoid = models.CharField(max_length=50, unique=True)
+    
+
 
     def __str__(self):
         return f"{self.layer} - {self.name} - {self.geoid}"
@@ -49,6 +51,18 @@ class TransformedSchoolData(models.Model):
     class Meta:
         ordering = ['year']  # Default ordering by 'year' field
 
+class MetopioStateWideLayerTransformation(models.Model):
+    layer = models.CharField(max_length=50, default='State')  # Constant value: 'State'
+    geoid = models.CharField(max_length=50, default='WI')  # Constant value: 'wisconsin'
+    topic = models.CharField(max_length=50, default='FVDEYLCV')  # Constant value: 'FVDEYLCV'
+    stratification = models.TextField(blank=True)  # To store stratification notes
+    period = models.CharField(max_length=20)  # Transformed SCHOOL_YEAR (e.g., 2023-24 → 2023-2024)
+    value = models.PositiveIntegerField()  # Derived from STUDENT_COUNT
+
+    class Meta:
+        verbose_name = 'Metopio Statewide Data Transformation'
+        verbose_name_plural = 'Metopio Statewide Data Transformations'
+        ordering = ['period', 'stratification']  # Add this line
 
 class MetopioTriCountyLayerTransformation(models.Model):
     layer = models.CharField(max_length=50, default='Region')  # Constant value: 'Region'

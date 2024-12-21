@@ -29,6 +29,11 @@
         <button type="submit" name="transformation_type" value="County-Layer">Run County Layer Transformation</button>
     </form>
 
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="transformation_type" value="Metopio Statewide">Run Metopio Statewide Transformation</button>
+    </form>
+
     <br>
     {% if message %}
         <div class="alert alert-info">{{ message }}</div>

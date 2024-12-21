@@ -10,6 +10,8 @@ urlpatterns = [
     path('statewide/', views.statewide_view, name='statewide_view'),
     path('tricounty/', views.tri_county_view, name='tri_county_view'),
     path('county_layer/', views.county_layer_view, name='county_layer_view'),
+    path('metopio_statewide/', views.metopio_statewide_view, name='metopio_statewide_layer_view'),
+    
     
 
 ]

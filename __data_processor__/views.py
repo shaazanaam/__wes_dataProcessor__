@@ -10,6 +10,7 @@ from .models import (
     Stratification,
     MetopioTriCountyLayerTransformation,
     CountyLayerTransformation,
+    MetopioStateWideLayerTransformation,
 )
 from .forms import UploadFileForm
 from .models import CountyGEOID
@@ -76,6 +77,10 @@ def transformation_success(request):
         transformer = DataTransformer(request)  # Apply County Layer transformation
         transformer.apply_county_layer_transformation()
         data_list = CountyLayerTransformation.objects.all()
+    elif transformation_type == "Metopio Statewide":
+        transformer = DataTransformer(request)
+        transformer.transform_Metopio_StateWideLayer()
+        data_list = MetopioStateWideLayerTransformation.objects.all()
     else:
         # Handle unknown transformation types
         details = "Unknown transformation type. Please check your request."
@@ -268,6 +273,9 @@ def upload_file(request):
 
                 success = transformer.apply_county_layer_transformation()  # Apply County Layer transformation
             
+            elif transformation_type == "Metopio Statewide":
+                success = transformer.transform_Metopio_StateWideLayer() # Apply Metopio Statewide transformation
+                
             else:
                 success = transformer.apply_transformation(transformation_type )  # Apply the transformation
 
@@ -409,7 +417,36 @@ def county_layer_view(request):
         {"data": data, "transformation_type": transformation_type},
     )
 
+#METOPIO STATEWIDE VIEW
+def metopio_statewide_view(request):
+    # Get the transformation type from the query parameters
+    transformation_type = request.GET.get(
+        "type", "Statewide"
+    )  # Default to 'Statewide' if not specified
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
 
+    # Apply the Metopio Statewide Transformation
+    DataTransformer(request).transform_Metopio_StateWideLayer()
+
+    # Fetch the transformed data from the MetopioStateWideLayerTransformation model
+    data_list = MetopioStateWideLayerTransformation.objects.all()
+
+    # Paginate the Results
+    paginator = Paginator(data_list, 20)  # Show 20 records per page
+    page_number = request.GET.get("page")
+    data = paginator.get_page(page_number)
+
+    # Pass the data to the template file
+    return render(
+        request,
+        "__data_processor__/metopio_statewide.html",
+        {"data": data, "transformation_type": transformation_type},
+    )
+
+
+
+
+#OUTPUT DOWNLOADS
 ##EXCEL HANDLE ##
 
 def generate_transformed_excel(transformation_type):
@@ -438,7 +475,6 @@ def generate_transformed_excel(transformation_type):
     # The file is automatically saved and closed when the context manager exits
     return excel_file
 
-
 def download_excel(request):
     # Get the transformation type from the URL query parameter
     transformation_type = request.GET.get(
@@ -456,9 +492,7 @@ def download_excel(request):
         response["Content-Disposition"] = f"attachment; filename={excel_file}"
         return response
 
-
 ## CSV HANDLE##
-
 
 def generate_transformed_csv(transformation_type):
 
@@ -468,6 +502,8 @@ def generate_transformed_csv(transformation_type):
         data = MetopioTriCountyLayerTransformation.objects.all()
     elif transformation_type == "County-Layer":
         data = CountyLayerTransformation.objects.all()
+    elif transformation_type == "Metopio Statewide":
+        data = MetopioStateWideLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(
             place="WI"
@@ -490,7 +526,6 @@ def generate_transformed_csv(transformation_type):
         writer.writerows(data_list)
 
     return csv_file
-
 
 def download_csv(request):
     # Get the transformation type from the URL query parameter
