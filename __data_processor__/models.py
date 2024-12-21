@@ -14,7 +14,34 @@ class CountyGEOID(models.Model):
     name = models.CharField(max_length=100)
     geoid = models.CharField(max_length=50, unique=True)
     
+class SchoolAddressFile(models.Model):
+    lea_code = models.CharField(max_length=10, verbose_name="LEA Code")
+    district_name = models.CharField(max_length=255, verbose_name="District Name")
+    school_code = models.CharField(max_length=10, verbose_name="School Code")
+    school_name = models.CharField(max_length=255, verbose_name="School Name")
+    organization_type = models.CharField(max_length=100, verbose_name="Organization Type")
+    school_type = models.CharField(max_length=100, verbose_name="School Type")
+    low_grade = models.CharField(max_length=10, verbose_name="Low Grade")
+    high_grade = models.CharField(max_length=10, verbose_name="High Grade")
+    address = models.CharField(max_length=255, verbose_name="Address")
+    city = models.CharField(max_length=100, verbose_name="City")
+    state = models.CharField(max_length=2, verbose_name="State")
+    zip_code = models.CharField(max_length=10, verbose_name="Zip")
+    cesa = models.CharField(max_length=10, verbose_name="CESA")
+    locale = models.CharField(max_length=100, verbose_name="Locale")
+    county = models.CharField(max_length=100, verbose_name="County")
+    current_status = models.CharField(max_length=50, verbose_name="Current Status")
+    categories_and_programs = models.TextField(null=True, blank=True, verbose_name="Categories And Programs")
+    virtual_school = models.CharField(max_length=50, null=True, blank=True, verbose_name="Virtual School")
+    ib_program = models.CharField(max_length=50, null=True, blank=True, verbose_name="IB Program")
+    phone_number = models.CharField(max_length=20, verbose_name="Phone Number")
+    fax_number = models.CharField(max_length=20, null=True, blank=True, verbose_name="Fax Number")
+    charter_status = models.BooleanField(verbose_name="Charter Status")
+    website_url = models.URLField(max_length=255, null=True, blank=True, verbose_name="Website URL")
 
+    def __str__(self):
+        return f"{self.school_name} ({self.district_name})"
+    
 
     def __str__(self):
         return f"{self.layer} - {self.name} - {self.geoid}"
@@ -81,6 +108,19 @@ class MetopioTriCountyLayerTransformation(models.Model):
 
 
 class CountyLayerTransformation(models.Model):
+    layer = models.CharField(max_length=50, default='County')
+    geoid = models.CharField(max_length=50)  # Change this to CharField
+    topic = models.CharField(max_length=50, default='FVDEYLCV')
+    stratification = models.TextField(blank=True)
+    period = models.CharField(max_length=20)
+    value = models.PositiveIntegerField()
+
+    class Meta:
+        verbose_name = 'County Layer Transformation'
+        verbose_name_plural = 'County Layer Transformations'
+        ordering = ['period', 'stratification']
+        
+class ZipCodeLayerTransformation(models.Model):
     layer = models.CharField(max_length=50, default='County')
     geoid = models.CharField(max_length=50)  # Change this to CharField
     topic = models.CharField(max_length=50, default='FVDEYLCV')
