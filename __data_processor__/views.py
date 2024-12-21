@@ -9,8 +9,10 @@ from .models import (
     TransformedSchoolData,
     Stratification,
     MetopioTriCountyLayerTransformation,
+    CountyLayerTransformation,
 )
 from .forms import UploadFileForm
+from .models import CountyGEOID
 from django.http import HttpResponse
 import logging
 from django.conf import settings
@@ -21,6 +23,7 @@ from django.db import transaction
 from django.core.paginator import Paginator
 from django.contrib import messages  # For adding feedback messages
 from .transformers import DataTransformer
+
 
 
 def data_processor_home(request):
@@ -69,6 +72,16 @@ def transformation_success(request):
         transformer = DataTransformer(request)
         transformer.apply_tri_county_layer_transformation()
         data_list = MetopioTriCountyLayerTransformation.objects.all()
+    elif transformation_type == "County-Layer":
+        transformer = DataTransformer(request)  # Apply County Layer transformation
+        transformer.apply_county_layer_transformation()
+        data_list = CountyLayerTransformation.objects.all()
+    else:
+        # Handle unknown transformation types
+        details = "Unknown transformation type. Please check your request."
+        data_list = []
+
+    
 
     # Paginate the results
     paginator = Paginator(data_list, 20)  # Show 20 records per page
@@ -221,18 +234,21 @@ def upload_file(request):
     if request.method == "POST":
         # Handle file upload
         file = request.FILES.get("file")
-        stratifications_file = request.FILES.get(
-            "stratifications_file"
-        )  
+        stratifications_file = request.FILES.get("stratifications_file")  
+        county_geoid_file = request.FILES.get("county_geoid_file") #New County GEOID file
         #Get the stratification file if provided
 
         if file:  # Check if a file is uploaded
             form = UploadFileForm(request.POST, request.FILES)
             if form.is_valid():
-                handle_uploaded_file(
-                    file, stratifications_file=stratifications_file
-                )  # Process the uploaded file
-                   # Redirect to the success page or back to upload with a success message
+                handle_uploaded_file(file, stratifications_file=stratifications_file)   # Process the main file and the uploaded file
+                
+                #Process the COunty GEOID file if provided
+                if county_geoid_file:
+                    load_county_geoid_file(county_geoid_file)
+
+                # Redirect to the success page or back to upload with a success message
+
                 return redirect(
                     f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation."
                 )
@@ -242,17 +258,18 @@ def upload_file(request):
         # Handle transformation actions
         transformation_type = request.POST.get("transformation_type")
         if transformation_type:
-            transformer = DataTransformer(
-                request
-            )  # Create an instance of the DataTransformer class
+            transformer = DataTransformer(request)  # Create an instance of the DataTransformer class
+            
             if transformation_type == "Tri-County":
-                success = (
-                    transformer.apply_tri_county_layer_transformation()
-                )  # Apply the Tri-County Layer transformation
+                
+                success = (transformer.apply_tri_county_layer_transformation())  # Apply the Tri-County Layer transformation
+            
+            elif transformation_type == "County-Layer":
+
+                success = transformer.apply_county_layer_transformation()  # Apply County Layer transformation
+            
             else:
-                success = transformer.apply_transformation(
-                    transformation_type
-                )  # Apply the transformation
+                success = transformer.apply_transformation(transformation_type )  # Apply the transformation
 
             # If transformation was successful, redirect to the success page
             if success:
@@ -275,6 +292,48 @@ def upload_file(request):
         {"form": form, "message": message, "details": details},
     )
 
+# handle the county geoid file upload
+
+def load_county_geoid_file(file):
+    # Save the file to the uploads directory
+    upload_dir = os.path.join(settings.BASE_DIR, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.name)
+
+    with open(file_path, "wb+") as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    logger.info(f"County GEOID file uploaded successfully to {file_path}")
+
+    try:
+        with open(file_path, "r") as csvfile:
+            reader = csv.DictReader(csvfile)
+
+            # Validate required columns
+            required_columns = {"Layer", "Name", "GEOID"}
+            if not required_columns.issubset(reader.fieldnames):
+                raise ValueError(f"Missing required columns: {required_columns - set(reader.fieldnames)}")
+
+            # Clear existing records
+            CountyGEOID.objects.all().delete()
+
+            # Filter rows where Layer = 'County' and prepare data
+            data = [
+                CountyGEOID(
+                    layer=row["Layer"],  # Use the "Layer" field
+                    name=row["Name"],    # Use the "Name" field
+                    geoid=row["GEOID"]   # Use the "GEOID" field
+                )
+                for row in reader if row["Layer"] == "County"
+            ]
+
+            # Bulk insert filtered data
+            CountyGEOID.objects.bulk_create(data)
+            logger.info(f"{len(data)} County GEOID records inserted into the database")
+
+    except Exception as e:
+        logger.error(f"Error processing County GEOID file: {e}")
+        raise
 
 def statewide_view(request):
     transformation_type = request.GET.get(
@@ -299,7 +358,6 @@ def statewide_view(request):
         },
     )
 
-
 def tri_county_view(request):
     transformation_type = request.GET.get(
         "type", "Tri-County"
@@ -322,8 +380,37 @@ def tri_county_view(request):
         {"data": data, "transformation_type": transformation_type},
     )
 
-##EXCEL HANDLE ##
+#COUNTY LAYER VIEW
 
+# views.py
+
+def county_layer_view(request):
+    # Get the transformation type from the query parameters
+    transformation_type = request.GET.get(
+        "type", "County-Layer"
+    )  # Default to County Layer if not specified
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
+
+    # Apply the County Layer Transformation
+    DataTransformer(request).apply_county_layer_transformation()
+
+    # Fetch the transformed data from the CountyLayerTransformation model
+    data_list = CountyLayerTransformation.objects.all()
+
+    # Paginate the Results
+    paginator = Paginator(data_list, 20)  # Show 20 records per page
+    page_number = request.GET.get("page")
+    data = paginator.get_page(page_number)
+
+    # Pass the data to the template file
+    return render(
+        request,
+        "__data_processor__/county_layer.html",
+        {"data": data, "transformation_type": transformation_type},
+    )
+
+
+##EXCEL HANDLE ##
 
 def generate_transformed_excel(transformation_type):
     # Fetch the transformed data based on the transformation type
@@ -374,9 +461,13 @@ def download_excel(request):
 
 
 def generate_transformed_csv(transformation_type):
+
     # Fetch the transformed data based on the transformation type
+    # This is where you will be having various trnasformation types
     if transformation_type == "Tri-County":
         data = MetopioTriCountyLayerTransformation.objects.all()
+    elif transformation_type == "County-Layer":
+        data = CountyLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(
             place="WI"
@@ -384,11 +475,11 @@ def generate_transformed_csv(transformation_type):
 
     # Convert the QuerySet to a list of dictionaries and exclude the id field
     data_list = [
-        {key.upper(): value for key, value in row.items() if key != "id"}
+        {key.lower(): value for key, value in row.items() if key != "id"}
         for row in data.values()
     ]
 
-    # Get the field names (keys) from the first item, converted to uppercase
+    # Get the field names (keys) from the first item, converted to uppercase and now lower case
     fieldnames = data_list[0].keys() if data_list else []
 
     # Generate CSV file

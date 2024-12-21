@@ -7,6 +7,15 @@ class Stratification(models.Model):
 
     def __str__(self):
         return f"{self.group_by} - {self.group_by_value}"
+    
+
+class CountyGEOID(models.Model):
+    layer = models.CharField(max_length=50)
+    name = models.CharField(max_length=100)
+    geoid = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return f"{self.layer} - {self.name} - {self.geoid}"
 # Create your models here.
 class SchoolData(models.Model):
     school_year = models.CharField(max_length=7)
@@ -25,6 +34,9 @@ class SchoolData(models.Model):
     percent_of_group = models.CharField(max_length=20)
     place = models.CharField(max_length=100, null=True, blank=True)
     stratification = models.ForeignKey(Stratification, on_delete=models.SET_NULL, null=True, blank=True)
+    geoid = models.ForeignKey(CountyGEOID, on_delete=models.SET_NULL, null=True, blank=True)
+    
+
 
 class TransformedSchoolData(models.Model):
     year = models.CharField(max_length=7)
@@ -50,3 +62,19 @@ class MetopioTriCountyLayerTransformation(models.Model):
         verbose_name = 'Metopio Data Transformation'
         verbose_name_plural = 'Metopio Data Transformations'
         ordering = ['period', 'stratification']  # Add this line
+
+
+
+
+class CountyLayerTransformation(models.Model):
+    layer = models.CharField(max_length=50, default='County')
+    geoid = models.CharField(max_length=50)  # Change this to CharField
+    topic = models.CharField(max_length=50, default='FVDEYLCV')
+    stratification = models.TextField(blank=True)
+    period = models.CharField(max_length=20)
+    value = models.PositiveIntegerField()
+
+    class Meta:
+        verbose_name = 'County Layer Transformation'
+        verbose_name_plural = 'County Layer Transformations'
+        ordering = ['period', 'stratification']

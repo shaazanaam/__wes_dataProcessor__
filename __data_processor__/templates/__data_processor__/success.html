@@ -33,9 +33,16 @@
     <a href="/data_processor/download_csv/?type={{ transformation_type }}">Download Transformed {{ transformation_type }} Data (CSV)</a>
     <br />
     <br />
-    <h2>{{ transformation_type }} Data</h2>
 
-    <!-- Display data specific to MetopioTriCountyLayerTransformation -->
+    {% if transformation_type == "County-Layer" %}
+        <h2>County Layer Transformation Data</h2>
+    {% elif transformation_type == "Tri-County" %}
+        <h2>Tri-County Transformation Data</h2>
+    {% else %}
+        <h2>Statewide Transformation Data</h2>
+    {% endif %}
+
+    <!-- Display transformation data -->
     <table>
         <thead>
             <tr>

@@ -1,6 +1,6 @@
 # data_processor/transformers.py
 
-from .models import SchoolData, TransformedSchoolData,MetopioTriCountyLayerTransformation
+from .models import SchoolData, TransformedSchoolData, MetopioTriCountyLayerTransformation, CountyLayerTransformation, CountyGEOID
 from django.db import transaction
 import logging
 
@@ -76,6 +76,7 @@ class DataTransformer:
             return False
 
     def apply_tri_county_layer_transformation(self):
+        """ Apply Tri-County Layer Transformation """
         try:
             logger.info("Starting Tri-County Layer Transformation...")
 
@@ -150,3 +151,92 @@ class DataTransformer:
             logger.error(f"Error during Tri-County Layer Transformation: {e}")
             return False
 
+# Apply the county Layer Transformation 
+
+    def apply_county_layer_transformation(self):
+        try:
+            logger.info("Starting County Layer Transformation...")
+
+            #Fetch  and filter County GEOID entries for 'Layer = County'
+            county_geoid_entries= CountyGEOID.objects.filter(layer='County')
+            logger.info(f"County  GEOID entries count: {county_geoid_entries.count()}")
+
+            #Create a map to store the county name and its corresponding GEOID (or rather CountyGEOID instance)
+            county_geoid_map = {}
+
+            for entry in county_geoid_entries:
+                #Extract the initial portion of the county name before any comma
+                county_name = entry.name.split(" County, WI")[0].strip()
+                county_geoid_map[county_name] = entry # We change the entry.geoid to just entry  because entry is the instance itself
+            logger.info(F"County GEOID map: {county_geoid_map}")
+
+         
+            # Fetch school data for counties of interest
+            school_data = SchoolData.objects.filter(
+                county__in=county_geoid_map.keys(),
+                school_name="[Districtwide]",
+            )
+
+            logger.info(f"Filtered school data count: {school_data.count()}")
+
+            #Group the data by stratification and period
+            grouped_data = {}
+            transformed_data = []
+            for record in school_data:
+                # Transform the period field
+                school_year = record.school_year
+                if "-" in school_year:
+                    start_year, end_year = school_year.split("-")
+                    period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
+                else:
+                    period = school_year
+
+                # Map the county to its GEOID instance 
+                geoid = county_geoid_map.get(record.county, "Error")
+                
+                if geoid == "Error":
+                 logger.warning(f"County GEOID not found for county: {record.county}")
+
+                 # Default to "Error" if stratification is None
+                stratification = record.stratification.label_name if record.stratification else "Error" 
+
+
+                #Group by stratification and period
+
+                strat_key = (stratification, period)
+                if strat_key not in grouped_data:
+                    grouped_data[strat_key] = {
+                        "layer": "County",
+                        "geoid":  county_geoid_map.get(record.county).geoid if county_geoid_map.get(record.county) else "Error",
+                        "topic": "FVDEYLCV",
+                        "stratification": stratification,
+                        "period": period,
+                        "value": int(record.student_count) if record.student_count.isdigit() else 0,
+                    }
+                else:
+                    grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+
+            # Prepare transformed data for bulk insertion
+                # Create a transformation entry
+                transformed_data = [
+                    CountyLayerTransformation(
+                layer=data["layer"],
+                geoid=data["geoid"],
+                topic=data["topic"],
+                stratification=data["stratification"],
+                period=data["period"],
+                value=data["value"],
+                ) for data in grouped_data.values()
+                ]
+
+            # Insert transformed data in bulk
+            with transaction.atomic():
+                CountyLayerTransformation.objects.all().delete()  # Clear existing data
+                CountyLayerTransformation.objects.bulk_create(transformed_data)
+
+            logger.info(f"Successfully transformed {len(transformed_data)} records.")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error during County Layer Transformation: {e}")
+        return False

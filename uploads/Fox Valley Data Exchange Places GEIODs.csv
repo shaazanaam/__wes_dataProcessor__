@@ -1,0 +1,193 @@
+Layer,Name,GEOID
+Region,Fox Valley Tri-County Region ,fox-valley
+County,"Calumet County, WI",55015
+County,"Outagamie County, WI",55087
+County,"Winnebago County, WI",55139
+Zip code,53014,53014
+Zip code,53020,53020
+Zip code,53042,53042
+Zip code,53049,53049
+Zip code,53061,53061
+Zip code,53088,53088
+Zip code,54106,54106
+Zip code,54107,54107
+Zip code,54110,54110
+Zip code,54113,54113
+Zip code,54115,54115
+Zip code,54123,54123
+Zip code,54129,54129
+Zip code,54130,54130
+Zip code,54136,54136
+Zip code,54140,54140
+Zip code,54152,54152
+Zip code,54155,54155
+Zip code,54160,54160
+Zip code,54165,54165
+Zip code,54169,54169
+Zip code,54170,54170
+Zip code,54180,54180
+Zip code,54313,54313
+Zip code,54901,54901
+Zip code,54902,54902
+Zip code,54904,54904
+Zip code,54911,54911
+Zip code,54913,54913
+Zip code,54914,54914
+Zip code,54915,54915
+Zip code,54922,54922
+Zip code,54923,54923
+Zip code,54927,54927
+Zip code,54929,54929
+Zip code,54931,54931
+Zip code,54940,54940
+Zip code,54942,54942
+Zip code,54944,54944
+Zip code,54947,54947
+Zip code,54952,54952
+Zip code,54956,54956
+Zip code,54961,54961
+Zip code,54963,54963
+Zip code,54964,54964
+Zip code,54971,54971
+Zip code,54979,54979
+Zip code,54980,54980
+Zip code,54985,54985
+Zip code,54986,54986
+Census tract,Tract 201,55015020100
+Census tract,Tract 202,55015020200
+Census tract,Tract 203.03,55015020303
+Census tract,Tract 203.04,55015020304
+Census tract,Tract 203.06,55015020306
+Census tract,Tract 203.08,55015020308
+Census tract,Tract 204,55015020400
+Census tract,Tract 205,55015020500
+Census tract,Tract 206,55015020600
+Census tract,Tract 207,55015020700
+Census tract,Tract 208,55015020800
+Census tract,Tract 101,55087010100
+Census tract,Tract 102,55087010200
+Census tract,Tract 103,55087010300
+Census tract,Tract 105.01,55087010501
+Census tract,Tract 105.02,55087010502
+Census tract,Tract 106.01,55087010601
+Census tract,Tract 106.02,55087010602
+Census tract,Tract 107,55087010700
+Census tract,Tract 108,55087010800
+Census tract,Tract 109,55087010900
+Census tract,Tract 110.01,55087011001
+Census tract,Tract 110.02,55087011002
+Census tract,Tract 111.01,55087011101
+Census tract,Tract 111.03,55087011103
+Census tract,Tract 111.04,55087011104
+Census tract,Tract 112,55087011200
+Census tract,Tract 113,55087011300
+Census tract,Tract 114,55087011400
+Census tract,Tract 115.01,55087011501
+Census tract,Tract 115.02,55087011502
+Census tract,Tract 116,55087011600
+Census tract,Tract 117,55087011700
+Census tract,Tract 118,55087011800
+Census tract,Tract 119.01,55087011901
+Census tract,Tract 119.02,55087011902
+Census tract,Tract 120,55087012000
+Census tract,Tract 121.01,55087012101
+Census tract,Tract 121.02,55087012102
+Census tract,Tract 122,55087012200
+Census tract,Tract 123,55087012300
+Census tract,Tract 124,55087012400
+Census tract,Tract 125.03,55087012503
+Census tract,Tract 125.04,55087012504
+Census tract,Tract 125.05,55087012505
+Census tract,Tract 125.06,55087012506
+Census tract,Tract 126.02,55087012602
+Census tract,Tract 126.03,55087012603
+Census tract,Tract 126.04,55087012604
+Census tract,Tract 127,55087012700
+Census tract,Tract 128,55087012800
+Census tract,Tract 129.02,55087012902
+Census tract,Tract 129.03,55087012903
+Census tract,Tract 129.04,55087012904
+Census tract,Tract 131,55087013100
+Census tract,Tract 132,55087013200
+Census tract,Tract 133,55087013300
+Census tract,Tract 9400,55087940000
+Census tract,Tract 1,55139000100
+Census tract,Tract 2,55139000200
+Census tract,Tract 3,55139000300
+Census tract,Tract 4,55139000400
+Census tract,Tract 5.01,55139000501
+Census tract,Tract 5.02,55139000502
+Census tract,Tract 7,55139000700
+Census tract,Tract 8,55139000800
+Census tract,Tract 9,55139000900
+Census tract,Tract 10,55139001000
+Census tract,Tract 11,55139001100
+Census tract,Tract 12,55139001200
+Census tract,Tract 13,55139001300
+Census tract,Tract 14,55139001400
+Census tract,Tract 15,55139001500
+Census tract,Tract 16,55139001600
+Census tract,Tract 17,55139001700
+Census tract,Tract 18.01,55139001801
+Census tract,Tract 18.03,55139001803
+Census tract,Tract 18.04,55139001804
+Census tract,Tract 19,55139001900
+Census tract,Tract 20.01,55139002001
+Census tract,Tract 20.02,55139002002
+Census tract,Tract 21,55139002100
+Census tract,Tract 22.01,55139002201
+Census tract,Tract 22.02,55139002202
+Census tract,Tract 23,55139002300
+Census tract,Tract 24.01,55139002401
+Census tract,Tract 24.02,55139002402
+Census tract,Tract 25,55139002500
+Census tract,Tract 26.01,55139002601
+Census tract,Tract 26.02,55139002602
+Census tract,Tract 27,55139002700
+Census tract,Tract 28,55139002800
+Census tract,Tract 29,55139002900
+Census tract,Tract 30,55139003000
+Census tract,Tract 31,55139003100
+Census tract,Tract 32,55139003200
+Census tract,Tract 33,55139003300
+Census tract,Tract 34,55139003400
+Census tract,Tract 35,55139003500
+Census tract,Tract 36,55139003600
+Census tract,Tract 37.01,55139003701
+Census tract,Tract 37.03,55139003703
+Census tract,Tract 37.04,55139003704
+City or town,"Appleton, WI",5502375
+City or town,"Bear Creek, WI",5505575
+City or town,"Black Creek, WI",5507725
+City or town,"Brillion, WI",5509725
+City or town,"Brothertown, WI",5510325
+City or town,"Butte des Morts, WI",5511500
+City or town,"Chilton, WI",5514475
+City or town,"Combined Locks, WI",5516500
+City or town,"Dale, WI",5518500
+City or town,"Eureka, WI",5524475
+City or town,"Forest Junction, WI",5526575
+City or town,"Fox Crossing, WI",5526982
+City or town,"Harrison, WI",5532790
+City or town,"Hilbert, WI",5534575
+City or town,"Hortonville, WI",5535850
+City or town,"Kaukauna, WI",5538800
+City or town,"Kiel, WI",5539525
+City or town,"Kimberly, WI",5539650
+City or town,"Little Chute, WI",5544950
+City or town,"Menasha, WI",5550825
+City or town,"Neenah, WI",5555750
+City or town,"New Holstein, WI",5556800
+City or town,"New London, WI",5556925
+City or town,"Nichols, WI",5557375
+City or town,"Omro, WI",5559875
+City or town,"Oshkosh, WI",5560500
+City or town,"Potter, WI",5564675
+City or town,"Seymour, WI",5572725
+City or town,"Sherwood, WI",5573525
+City or town,"Shiocton, WI",5573625
+City or town,"Stockbridge, WI",5577400
+City or town,"Waukau, WI",5584200
+City or town,"Winchester, WI",5587625
+City or town,"Winneconne, WI",5587900
+City or town,"Wrightstown, WI",5589150

@@ -9,4 +9,7 @@ urlpatterns = [
     path('download_csv/', views.download_csv, name='download_csv'),
     path('statewide/', views.statewide_view, name='statewide_view'),
     path('tricounty/', views.tri_county_view, name='tri_county_view'),
+    path('county_layer/', views.county_layer_view, name='county_layer_view'),
+    
+
 ]
