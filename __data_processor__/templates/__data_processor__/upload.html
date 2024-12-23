@@ -34,6 +34,10 @@
         <button type="submit" name="transformation_type" value="Metopio Statewide">Run Metopio Statewide Transformation</button>
     </form>
 
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="transformation_type" value="Zipcode">Run Metopio Zip Code Transformation</button>
+
     <br>
     {% if message %}
         <div class="alert alert-info">{{ message }}</div>

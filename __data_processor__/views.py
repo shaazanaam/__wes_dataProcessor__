@@ -11,8 +11,11 @@ from .models import (
     MetopioTriCountyLayerTransformation,
     CountyLayerTransformation,
     MetopioStateWideLayerTransformation,
+    ZipCodeLayerTransformation,  # Add this line
 )
 from .forms import UploadFileForm
+from .models import ZipCodeLayerTransformation
+from .models import SchoolAddressFile
 from .models import CountyGEOID
 from django.http import HttpResponse
 import logging
@@ -20,7 +23,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 import pandas as pd
-from django.db import transaction
+from django.db import transaction, connection
 from django.core.paginator import Paginator
 from django.contrib import messages  # For adding feedback messages
 from .transformers import DataTransformer
@@ -81,6 +84,10 @@ def transformation_success(request):
         transformer = DataTransformer(request)
         transformer.transform_Metopio_StateWideLayer()
         data_list = MetopioStateWideLayerTransformation.objects.all()
+    elif transformation_type == "Zipcode":
+        transformer = DataTransformer(request)
+        transformer.transforms_Metopio_ZipCodeLayer()
+        data_list = ZipCodeLayerTransformation.objects.all()
     else:
         # Handle unknown transformation types
         details = "Unknown transformation type. Please check your request."
@@ -114,7 +121,7 @@ def transformation_success(request):
 # Handles the error gracefully : Implements the retry mechanism to handle database locking errors
 # Links the data in the SchoolData and the Stratification using the foreign key
 
-
+# handling to load the main file and the stratification file
 def handle_uploaded_file(f, stratifications_file=None):
     # Save to a Directory in Your Project: Create a directory within your project to
     # store uploaded files. For example, create a directory called uploads in your project root.
@@ -141,10 +148,11 @@ def handle_uploaded_file(f, stratifications_file=None):
         try:
             with open(strat_file_path, "r") as strat_file:
                 strat_reader = csv.DictReader(strat_file)
+                Stratification.objects.all().delete()  # Clear existing stratifications
                 for row in strat_reader:
-                    group_by = row.get("GROUP_BY", "Unknown")
-                    group_by_value = row.get("GROUP_BY_VALUE", "Unknown")
-                    label_name = row.get("Stratification", "Error")
+                    group_by = row["GROUP_BY"]
+                    group_by_value = row["GROUP_BY_VALUE"]
+                    label_name = row["Stratification"]
 
                     # creates Stratification object in the database
                     # for each unique combination of group_by and group_by_value
@@ -154,7 +162,8 @@ def handle_uploaded_file(f, stratifications_file=None):
                         group_by_value=group_by_value,
                         label_name=label_name,
                     )
-                    # Builds a dictionay(strat_map) mapping the combination of the group_by and group_by_value to the label_name
+                    # Builds a dictionay(strat_map) mapping the combination of the group_by and group_by_value
+                    # to the label_name
                     # This will be used to assign the stratification to the SchoolData objects
 
                     strat_map[f"{group_by}{group_by_value}"] = strat.label_name
@@ -173,7 +182,8 @@ def handle_uploaded_file(f, stratifications_file=None):
                 SchoolData.objects.all().delete()
                 data = []
 
-                # Builds a dictionary(strat_map) mapping  each combination of group_by and group_by_value
+                # Builds a dictionary(strat_map) mapping  each combination of group_by and 
+                # group_by_value
                 # from the Stratification model to its corresponding Stratification object
 
                 strat_map = {
@@ -241,17 +251,68 @@ def upload_file(request):
         file = request.FILES.get("file")
         stratifications_file = request.FILES.get("stratifications_file")  
         county_geoid_file = request.FILES.get("county_geoid_file") #New County GEOID file
+        school_address_file = request.FILES.get("school_address_file")  #New School Address file
+        
+        
         #Get the stratification file if provided
 
         if file:  # Check if a file is uploaded
             form = UploadFileForm(request.POST, request.FILES)
             if form.is_valid():
-                handle_uploaded_file(file, stratifications_file=stratifications_file)   # Process the main file and the uploaded file
+                handle_uploaded_file(
+                    file, 
+                    stratifications_file=stratifications_file,
+                    )   # Process the main file and the uploaded file
                 
-                #Process the COunty GEOID file if provided
-                if county_geoid_file:
-                    load_county_geoid_file(county_geoid_file)
+            #Process the COunty GEOID file if provided
+            if county_geoid_file:
+                load_county_geoid_file(county_geoid_file)
+            if school_address_file:
+                load_school_address_file(school_address_file)
+                # after loading the school_address_file I am going to update the SchoolData model
+                # to take care of the Many-to-Many relationship
+                # But remember this only takes care of populating the relationship for the three counties
+                # Outagamie, Winnebago and Calumet and not for all the counties
+                
+                try:
+                    logger.info("Populating address_details for the SchoolData model...")
 
+                    # Fetch all the necessary data upfront
+                    school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
+                    school_data = SchoolData.objects.values("id", "district_code", "school_code")
+
+                    # Create a dictionary mapping (lea_code, school_code) to SchoolAddressFile ID
+                    address_map = {
+                        (address["lea_code"], address["school_code"]): address["id"]
+                        for address in school_address_data
+                    }
+
+                    # Prepare records for the intermediate table
+                    m2m_table_name = SchoolData.address_details.through._meta.db_table
+                    records_to_insert = []
+
+                    for school in school_data:
+                        address_id = address_map.get((school["district_code"], school["school_code"]))
+                        if address_id:
+                            records_to_insert.append((school["id"], address_id))
+
+                    # Delete existing Many-to-Many relationships
+                    with connection.cursor() as cursor:
+                        cursor.execute(f"DELETE FROM {m2m_table_name}")
+
+                    # Insert new relationships in batches
+                    batch_size = 500
+                    with connection.cursor() as cursor:
+                        for i in range(0, len(records_to_insert), batch_size):
+                            batch = records_to_insert[i:i+batch_size]
+                            values = ", ".join(f"({school_id}, {address_id})" for school_id, address_id in batch)
+                            cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
+
+                    logger.info(f"Successfully populated {len(records_to_insert)} address details for SchoolData records.")
+
+                except Exception as e:
+                    logger.error(f"Error populating address details: {e}")
+                    raise   
                 # Redirect to the success page or back to upload with a success message
 
                 return redirect(
@@ -275,7 +336,8 @@ def upload_file(request):
             
             elif transformation_type == "Metopio Statewide":
                 success = transformer.transform_Metopio_StateWideLayer() # Apply Metopio Statewide transformation
-                
+            elif transformation_type == "Zipcode":
+                success = transformer.transforms_Metopio_ZipCodeLayer() # Apply Metopio Zipcode transformation    
             else:
                 success = transformer.apply_transformation(transformation_type )  # Apply the transformation
 
@@ -299,6 +361,7 @@ def upload_file(request):
         "__data_processor__/upload.html",
         {"form": form, "message": message, "details": details},
     )
+    
 
 # handle the county geoid file upload
 
@@ -316,14 +379,13 @@ def load_county_geoid_file(file):
     try:
         with open(file_path, "r") as csvfile:
             reader = csv.DictReader(csvfile)
-
+            CountyGEOID.objects.all().delete()  # Clear existing records
             # Validate required columns
             required_columns = {"Layer", "Name", "GEOID"}
             if not required_columns.issubset(reader.fieldnames):
                 raise ValueError(f"Missing required columns: {required_columns - set(reader.fieldnames)}")
 
-            # Clear existing records
-            CountyGEOID.objects.all().delete()
+           
 
             # Filter rows where Layer = 'County' and prepare data
             data = [
@@ -332,7 +394,7 @@ def load_county_geoid_file(file):
                     name=row["Name"],    # Use the "Name" field
                     geoid=row["GEOID"]   # Use the "GEOID" field
                 )
-                for row in reader if row["Layer"] == "County"
+                for row in reader 
             ]
 
             # Bulk insert filtered data
@@ -341,6 +403,75 @@ def load_county_geoid_file(file):
 
     except Exception as e:
         logger.error(f"Error processing County GEOID file: {e}")
+        raise
+
+# handle the school AddressFile upload
+def load_school_address_file(file):
+    # Save the file to the uploads directory
+    upload_dir = os.path.join(settings.BASE_DIR, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.name)
+
+    with open(file_path, "wb+") as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    logger.info(f"School Address file uploaded successfully to {file_path}")
+
+    try:
+        with open(file_path, "r") as csvfile:
+            reader = csv.DictReader(csvfile)
+            SchoolAddressFile.objects.all().delete()  # Clear existing records
+            # Validate required columns
+            required_columns = {
+                "LEA Code", "District Name", "School Code", "School Name",
+                "Organization Type", "School Type", "Low Grade", "High Grade",
+                "Address", "City", "State", "Zip", "CESA", "Locale",
+                "County", "Current Status", "Categories And Programs",
+                "Virtual School", "IB Program", "Phone Number",
+                "Fax Number", "Charter Status", "Website Url"
+            }
+            if not required_columns.issubset(reader.fieldnames):
+                raise ValueError(f"Missing required columns: {required_columns - set(reader.fieldnames)}")
+            
+            with transaction.atomic():
+                
+
+                # Prepare data for bulk insertion
+                data = [
+                    SchoolAddressFile(
+                        lea_code=row["LEA Code"],
+                        district_name=row["District Name"],
+                        school_code=row["School Code"],
+                        school_name=row["School Name"],
+                        organization_type=row["Organization Type"],
+                        school_type=row["School Type"],
+                        low_grade=row["Low Grade"],
+                        high_grade=row["High Grade"],
+                        address=row["Address"],
+                        city=row["City"],
+                        state=row["State"],
+                        zip_code=row["Zip"],
+                        cesa=row["CESA"],
+                        locale=row["Locale"],
+                        county=row["County"],
+                        current_status=row["Current Status"],
+                        categories_and_programs=row.get("Categories And Programs", ""),
+                        virtual_school=row.get("Virtual School", ""),
+                        ib_program=row.get("IB Program", ""),
+                        phone_number=row["Phone Number"],
+                        fax_number=row.get("Fax Number", ""),
+                        charter_status=row["Charter Status"].lower() == "true",
+                        website_url=row.get("Website Url", ""),
+                    )
+                    for row in reader
+                ]
+
+                # Bulk insert data
+                SchoolAddressFile.objects.bulk_create(data)
+            logger.info(f"{len(data)} School Address records inserted into the database")
+
+    except Exception as e:
+        logger.error(f"Error processing School Address file: {e}")
         raise
 
 def statewide_view(request):
@@ -443,7 +574,31 @@ def metopio_statewide_view(request):
         {"data": data, "transformation_type": transformation_type},
     )
 
+#METOPIO ZIPCODE VIEW
+def metopio_zipcode_view(request):
+    # Get the transformation type from the query parameters
+    transformation_type = request.GET.get(
+        "type", "Zipcode"
+    )  # Default to 'Zipcode' if not specified
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
 
+    # Apply the Metopio Zipcode Transformation
+    DataTransformer(request).transforms_Metopio_ZipCodeLayer()
+
+    # Fetch the transformed data from the MetopioZipCodeLayerTransformation model
+    data_list = ZipCodeLayerTransformation.objects.all()
+
+    # Paginate the Results
+    paginator = Paginator(data_list, 20)  # Show 20 records per page
+    page_number = request.GET.get("page")
+    data = paginator.get_page(page_number)
+
+    # Pass the data to the template file
+    return render(
+        request,
+        "__data_processor__/metopio_zipcode.html",
+        {"data": data, "transformation_type": transformation_type},
+    )
 
 
 #OUTPUT DOWNLOADS
@@ -504,6 +659,8 @@ def generate_transformed_csv(transformation_type):
         data = CountyLayerTransformation.objects.all()
     elif transformation_type == "Metopio Statewide":
         data = MetopioStateWideLayerTransformation.objects.all()
+    elif transformation_type == "Zipcode":
+        data = ZipCodeLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(
             place="WI"

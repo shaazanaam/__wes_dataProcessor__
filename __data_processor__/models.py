@@ -7,17 +7,19 @@ class Stratification(models.Model):
 
     def __str__(self):
         return f"{self.group_by} - {self.group_by_value}"
-    
 
 class CountyGEOID(models.Model):
     layer = models.CharField(max_length=50)
     name = models.CharField(max_length=100)
     geoid = models.CharField(max_length=50, unique=True)
     
+    def __str__(self):
+        return f"{self.layer} - {self.name} - {self.geoid}"
+#SchoolAddressFile model is being used for the ZipCodeLayerTransformation model   
 class SchoolAddressFile(models.Model):
-    lea_code = models.CharField(max_length=10, verbose_name="LEA Code")
+    lea_code = models.CharField(max_length=10, verbose_name="LEA Code")  # Unique constraint for one to many relationship
     district_name = models.CharField(max_length=255, verbose_name="District Name")
-    school_code = models.CharField(max_length=10, verbose_name="School Code")
+    school_code = models.CharField(max_length=10, verbose_name="School Code")  # Unique constraint for one to many relationship    
     school_name = models.CharField(max_length=255, verbose_name="School Name")
     organization_type = models.CharField(max_length=100, verbose_name="Organization Type")
     school_type = models.CharField(max_length=100, verbose_name="School Type")
@@ -43,9 +45,8 @@ class SchoolAddressFile(models.Model):
         return f"{self.school_name} ({self.district_name})"
     
 
-    def __str__(self):
-        return f"{self.layer} - {self.name} - {self.geoid}"
-# Create your models here.
+    
+# Main Model is the School Data Model
 class SchoolData(models.Model):
     school_year = models.CharField(max_length=7)
     agency_type = models.CharField(max_length=50)
@@ -64,8 +65,39 @@ class SchoolData(models.Model):
     place = models.CharField(max_length=100, null=True, blank=True)
     stratification = models.ForeignKey(Stratification, on_delete=models.SET_NULL, null=True, blank=True)
     geoid = models.ForeignKey(CountyGEOID, on_delete=models.SET_NULL, null=True, blank=True)
+    address_details = models.ManyToManyField(
+        SchoolAddressFile, 
+        blank=True,
+        verbose_name="Address Details",
+        related_name="school_data") 
+    def __str__(self):
+        return f"{self.school_name} - {self.district_name}"
     
-
+        # Set related_name to 'school_address_details' in the
+        # to allow the reverse querying from the SchoolAddressFile model to fetch related SchoolData instances
+        #Retained the existing field names for the (district_code and the school_code) in SchoolData for storage byt
+        # added the foreign key relationship to the SchoolAddressFile model to store the address details of the school
+        # Since the existing dataProcessing logic relies on the district_code and the school_code fields being simple fields
+        # removing them and then  replacing them with the foreign key relationship to the SchoolAddressFile model would break the existing logic
+        #Adding the foreignKey relationship(address_details)  allows you to introduce new functionality to the existing dataProcessing logic
+        # without breaking the existing logic
+        # This will also prevent all the insert and update look ups in the SchoolData model to avoid traversing the SchoolAddressFile model
+        # to fetch the address details of the school
+        # this will also let you work independently with the school_code and the district_code field in the SchoolData model
+        # without you having to always verify that the actual value actaully exists in the SchoolAddressFile model
+        # Change to the foreign key relation for the school_code and the district_code  would have required  significant migration effort
+        # and would also have had us to handle the case for where the SchoolAddressFile record doesnt exist or has some missing data
+        # It also takes care of the case where the school_code and district_code  in the SchoolData dont match the ones in the SchoolAddressFile
+        # You can still store them as plain fields in  without requiring a corresponding  ForeignKey rleationship in the SchoolAddressFile model
+        # the address_details can actually be used to provide explicit mapping to the SchoolAddressFile enabling you to fetch the full address details
+        # of the school
+        # example school = SchoolData.objects.get(id=1)
+        #print(school.address_details.address, school.address_details.city, school.address_details.state, school.address_details.zip_code)
+        #  you retain the simplicity of  querying district_code and school_code directly while enabling advanced relationships via the address_details field
+        # You also avoid duplicatiing address related fields like the district_name and the school_name inside the SchoolData
+        #If you're confident that all your SchoolData rows will always match a corresponding
+        # SchoolAddressFile entry, you can replace district_code and school_code with ForeignKey fields.
+        # However, this approach offers flexibility and avoids potential data or migration
 
 class TransformedSchoolData(models.Model):
     year = models.CharField(max_length=7)
@@ -78,6 +110,7 @@ class TransformedSchoolData(models.Model):
     class Meta:
         ordering = ['year']  # Default ordering by 'year' field
 
+# Metopio Data Transformation Models
 class MetopioStateWideLayerTransformation(models.Model):
     layer = models.CharField(max_length=50, default='State')  # Constant value: 'State'
     geoid = models.CharField(max_length=50, default='WI')  # Constant value: 'wisconsin'
@@ -104,9 +137,6 @@ class MetopioTriCountyLayerTransformation(models.Model):
         verbose_name_plural = 'Metopio Data Transformations'
         ordering = ['period', 'stratification']  # Add this line
 
-
-
-
 class CountyLayerTransformation(models.Model):
     layer = models.CharField(max_length=50, default='County')
     geoid = models.CharField(max_length=50)  # Change this to CharField
@@ -131,4 +161,4 @@ class ZipCodeLayerTransformation(models.Model):
     class Meta:
         verbose_name = 'County Layer Transformation'
         verbose_name_plural = 'County Layer Transformations'
-        ordering = ['period', 'stratification']
+        ordering = ['period','geoid', 'stratification']

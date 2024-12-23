@@ -1,0 +1,42 @@
+{% extends "base_generic.html" %}
+
+{% block content %}
+<h1>Zip Code Layer Transformation</h1>
+
+<!-- Display paginated data -->
+<table>
+    <thead>
+        <tr>
+            <th>Layer</th>
+            <th>GEOID</th>
+            <th>Topic</th>
+            <th>Stratification</th>
+            <th>Period</th>
+            <th>Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in data %}
+        <tr>
+            <td>{{ item.layer }}</td>
+            <td>{{ item.geoid }}</td>
+            <td>{{ item.topic }}</td>
+            <td>{{ item.stratification }}</td>
+            <td>{{ item.period }}</td>
+            <td>{{ item.value }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination Controls -->
+<div class="pagination">
+    {% if data.has_previous %}
+    <a href="?page={{ data.previous_page_number }}&type={{ transformation_type }}">Previous</a>
+    {% endif %}
+    <span>Page {{ data.number }} of {{ data.paginator.num_pages }}</span>
+    {% if data.has_next %}
+    <a href="?page={{ data.next_page_number }}&type={{ transformation_type }}">Next</a>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,10 +1,20 @@
 
 # data_processor/transformers.py
 
-from .models import SchoolData, TransformedSchoolData, MetopioTriCountyLayerTransformation, CountyLayerTransformation, CountyGEOID, MetopioStateWideLayerTransformation
+from .models import (
+    SchoolData,
+    TransformedSchoolData, 
+    MetopioTriCountyLayerTransformation, 
+    CountyLayerTransformation,
+    CountyGEOID, 
+    MetopioStateWideLayerTransformation, 
+    ZipCodeLayerTransformation,
+    SchoolAddressFile
+)
 from django.db import transaction
 import logging
-
+import traceback
+from django.db.models import Q, F
 from django.contrib import messages
 logger = logging.getLogger(__name__)
 class DataTransformer:
@@ -193,22 +203,22 @@ class DataTransformer:
                     period = school_year
 
                 # Map the county to its GEOID instance 
-                geoid = county_geoid_map.get(record.county, "Error")
-                
+                geoid = county_geoid_map.get(record.county, "Error").geoid
+                 
                 if geoid == "Error":
                  logger.warning(f"County GEOID not found for county: {record.county}")
 
                  # Default to "Error" if stratification is None
                 stratification = record.stratification.label_name if record.stratification else "Error" 
+                
 
+                #Group by stratification and county
 
-                #Group by stratification and period
-
-                strat_key = (stratification, period)
+                strat_key = (stratification, record.county)
                 if strat_key not in grouped_data:
                     grouped_data[strat_key] = {
                         "layer": "County",
-                        "geoid":  county_geoid_map.get(record.county).geoid if county_geoid_map.get(record.county) else "Error",
+                        "geoid":  geoid if geoid else "Error",
                         "topic": "FVDEYLCV",
                         "stratification": stratification,
                         "period": period,
@@ -312,4 +322,132 @@ class DataTransformer:
             logger.error(f"Error during Metopio StateWide Layer Transformation: {e}")
             return False
             
-        
+
+#Just need to extract the zip code but still I am using the generic splitter
+# to make this code to be reuusable for other layers if needed
+# Please not why am I using the entry instead of the entry.geoid
+#By storing the entire CountyGEOID instance (entry) in the dictionary
+# instead of just entry.geoid, you can access all fields of the instance later 
+# (e.g., name, geoid, etc.). This provides more flexibility.
+# county_geoid_map["Outagamie"].geoid  # Access the GEOID of Outagamie
+# county_geoid_map["Outagamie"].name   # Access the name  of Outagamie
+#The resulting dictionary will look like this:
+# {
+#         "Outagamie": <CountyGEOID instance for Outagamie>,
+#         "Winnebago": <CountyGEOID instance for Winnebago>,
+#         "Calumet": <CountyGEOID instance for Calumet>,
+#         ...
+#  }
+
+    def transforms_Metopio_ZipCodeLayer(self):
+        try:
+            logger.info("Starting Metopio ZipCode Layer Transformation...")
+                   
+            # Remaining transformation logic
+
+            # Fetch and filter County GEOID entries
+            county_geoid_entries = CountyGEOID.objects.filter(layer="Zip code")
+            logger.info(f"Filtered County GEOID entries count: {county_geoid_entries.count()}")
+
+            # Create a map to store the Zip Code and its corresponding GEOID from the County GEOID entries
+            zip_code_geoid_map = {entry.name: entry.geoid for entry in county_geoid_entries}
+            logger.info(f"Zip Code GEOID map: {zip_code_geoid_map}")
+
+            # Fetch and join SchoolData with SchoolAddressFile dynamically
+            school_data = (
+                SchoolData.objects.filter(
+                    ~Q(county__startswith ='['),                        # Exclude records with county names in square brackets
+                    county__in=['Outagamie', 'Winnebago', 'Calumet']  # Filter for specified counties
+
+                )
+                .prefetch_related('address_details')  # Fetch related address details in a single query
+                .distinct()  # Ensure unique records
+            )
+            logger.info(f"Filtered school data count: {school_data.count()}")
+
+            # Process records for transformation
+            grouped_data = {}
+            report_data = []  # Collect reporting data here
+
+            for record in school_data:
+                # Iterate over the related address_details objects
+                
+                for address_details in record.address_details.all():
+                   
+                    # Extract the zip code
+                    zip_code = address_details.zip_code
+
+                    # Map the zip code to its GEOID
+                    geoid = zip_code_geoid_map.get(zip_code, "Error")
+                    if geoid == "Error":
+                        logger.warning(f"GEOID not found for zip code: {zip_code}")
+                        continue
+
+                    # Transform the period field
+                    school_year = record.school_year
+                    if '-' in school_year:
+                        start_year, end_year = school_year.split('-')
+                        period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
+                    else:
+                        period = school_year
+
+                    # Default to "Error" if stratification is None
+                    stratification = record.stratification.label_name if record.stratification else "Error"
+
+                    # Group by stratification and period
+                    strat_key = (stratification, geoid)
+
+                    if strat_key not in grouped_data:
+                        grouped_data[strat_key] = {
+                            "layer": "ZipCode",
+                            "geoid": geoid,
+                            "topic": "FVDEYLCV",
+                            "stratification": stratification,
+                            "period": period,
+                            "value": int(record.student_count) if record.student_count.isdigit() else 0,
+                        }
+                    else:
+                        grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+
+                    # Add to reporting data
+                    report_data.append({
+                        "school_year": record.school_year,
+                        "district_name": record.district_name,
+                        "school_name": record.school_name,
+                        "county": record.county,
+                        "zip_code": zip_code,
+                        "geoid": geoid,
+                        "stratification": stratification,
+                        "student_count": record.student_count,
+                    })
+
+            # Prepare transformed data for bulk insertion
+            transformed_data = [
+                ZipCodeLayerTransformation(
+                    layer=data["layer"],
+                    geoid=data["geoid"],
+                    topic=data["topic"],
+                    stratification=data["stratification"],
+                    period=data["period"],
+                    value=data["value"],
+                )
+                for data in grouped_data.values()
+            ]
+
+            # Insert transformed data in bulk
+            with transaction.atomic():
+                ZipCodeLayerTransformation.objects.all().delete()  # Clear existing data
+                ZipCodeLayerTransformation.objects.bulk_create(transformed_data)
+
+            logger.info(f"Successfully transformed {len(transformed_data)} records.")
+
+            # Output the reporting data to a file or database
+            logger.info(f"Generated report with {len(report_data)} entries.")
+            
+            return True
+
+        except Exception as e:
+            logger.error(f"Error during Metopio ZipCode Layer Transformation: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+

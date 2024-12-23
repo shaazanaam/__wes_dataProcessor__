@@ -1,54 +1,54 @@
-GROUP_BY,GROUP_BY_VALUE,Concatenated Key,Stratification,Comment
-All Students,All Students,All StudentsAll Students,,"this is meant to be empty as that translates to ""FULL"" in Metopio"
-Disability,Autism,DisabilityAutism,AUT2,
-Disability,Blind and Visually Impaired,DisabilityBlind and Visually Impaired,BLI1,
-Disability,Deaf or Hard of Hearing,DisabilityDeaf or Hard of Hearing,DEA1,
-Disability,Deafblind,DisabilityDeafblind,DEA2,
-Disability,Emotional Behavioral Disability,DisabilityEmotional Behavioral Disability,EMO1,
-Disability,Intellectual Disability,DisabilityIntellectual Disability,INT7,
-Disability,Not IDEA Eligible or No Disability,DisabilityNot IDEA Eligible or No Disability,NOT2,
-Disability,Orthopedic Impairment,DisabilityOrthopedic Impairment,ORT3,
-Disability,Other Health Impairment,DisabilityOther Health Impairment,OTH52,
-Disability,Significant Developmental Delay,DisabilitySignificant Developmental Delay,SIG1,
-Disability,Specific Learning Disability,DisabilitySpecific Learning Disability,SPE2,
-Disability,Speech or Language Impairment,DisabilitySpeech or Language Impairment,SPE3,
-Disability,Traumatic Brain Injury,DisabilityTraumatic Brain Injury,TRA11,
-Disability,Unknown,DisabilityUnknown,UNK2,
-Disability Status,SwD,Disability StatusSwD,SWD1,
-Disability Status,SwoD,Disability StatusSwoD,SWO1,
-Disability Status,Unknown,Disability StatusUnknown,UNK6,
-Economic Status,Econ Disadv,Economic StatusEcon Disadv,ECO1,
-Economic Status,Not Econ Disadv,Economic StatusNot Econ Disadv,NOT3,
-Economic Status,Unknown,Economic StatusUnknown,UNK3,
-EL Status,EL,EL StatusEL,EL1,
-EL Status,Eng Prof,EL StatusEng Prof,ENG3,
-EL Status,Unknown,EL StatusUnknown,UNK4,
-Gender,Female,GenderFemale,FEM3,
-Gender,Male,GenderMale,MAL15,
-Gender,Non-binary,GenderNon-binary,NON10,
-Grade Level,1,Grade Level1,X1S2,
-Grade Level,10,Grade Level10,X1012,
-Grade Level,11,Grade Level11,X113,
-Grade Level,12,Grade Level12,X1210,
-Grade Level,2,Grade Level2,X2N2,
-Grade Level,3,Grade Level3,X3R2,
-Grade Level,4,Grade Level4,X4T2,
-Grade Level,5,Grade Level5,X5T3,
-Grade Level,6,Grade Level6,X6T3,
-Grade Level,7,Grade Level7,X7T2,
-Grade Level,8,Grade Level8,X8T2,
-Grade Level,9,Grade Level9,X9T3,
-Grade Level,K3,Grade LevelK3,K31,
-Grade Level,K4,Grade LevelK4,K41,
-Grade Level,KG,Grade LevelKG,KIN2,
-Grade Level,PK,Grade LevelPK,PK1,
-Migrant Status,Migrant,Migrant StatusMigrant,MIG1,
-Migrant Status,Not Migrant,Migrant StatusNot Migrant,NOT4,
-Race/Ethnicity,Amer Indian,Race/EthnicityAmer Indian,P,
-Race/Ethnicity,Asian,Race/EthnicityAsian,A,
-Race/Ethnicity,Black,Race/EthnicityBlack,B,
-Race/Ethnicity,Hispanic,Race/EthnicityHispanic,H,
-Race/Ethnicity,Pacific Isle,Race/EthnicityPacific Isle,P1,
-Race/Ethnicity,Two or More,Race/EthnicityTwo or More,Q,
-Race/Ethnicity,Unknown,Race/EthnicityUnknown,UNK5,
-Race/Ethnicity,White,Race/EthnicityWhite,W,
+GROUP_BY,GROUP_BY_VALUE,Stratification
+All Students,All Students,
+Disability,Autism,AUT2
+Disability,Blind and Visually Impaired,BLI1
+Disability,Deaf or Hard of Hearing,DEA1
+Disability,Deafblind,DEA2
+Disability,Emotional Behavioral Disability,EMO1
+Disability,Intellectual Disability,INT7
+Disability,Not IDEA Eligible or No Disability,NOT2
+Disability,Orthopedic Impairment,ORT3
+Disability,Other Health Impairment,OTH52
+Disability,Significant Developmental Delay,SIG1
+Disability,Specific Learning Disability,SPE2
+Disability,Speech or Language Impairment,SPE3
+Disability,Traumatic Brain Injury,TRA11
+Disability,Unknown,UNK2
+Disability Status,SwD,SWD1
+Disability Status,SwoD,SWO1
+Disability Status,Unknown,UNK6
+Economic Status,Econ Disadv,ECO1
+Economic Status,Not Econ Disadv,NOT3
+Economic Status,Unknown,UNK3
+EL Status,EL,EL1
+EL Status,Eng Prof,ENG3
+EL Status,Unknown,UNK4
+Gender,Female,FEM3
+Gender,Male,MAL15
+Gender,Non-binary,NON10
+Grade Level,1,X1S2
+Grade Level,10,X1012
+Grade Level,11,X113
+Grade Level,12,X1210
+Grade Level,2,X2N2
+Grade Level,3,X3R2
+Grade Level,4,X4T2
+Grade Level,5,X5T3
+Grade Level,6,X6T3
+Grade Level,7,X7T2
+Grade Level,8,X8T2
+Grade Level,9,X9T3
+Grade Level,K3,K31
+Grade Level,K4,K41
+Grade Level,KG,KIN2
+Grade Level,PK,PK1
+Migrant Status,Migrant,MIG1
+Migrant Status,Not Migrant,NOT4
+Race/Ethnicity,Amer Indian,P
+Race/Ethnicity,Asian,A
+Race/Ethnicity,Black,B
+Race/Ethnicity,Hispanic,H
+Race/Ethnicity,Pacific Isle,P1
+Race/Ethnicity,Two or More,Q
+Race/Ethnicity,Unknown,UNK5
+Race/Ethnicity,White,W
