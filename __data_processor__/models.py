@@ -162,3 +162,16 @@ class ZipCodeLayerTransformation(models.Model):
         verbose_name = 'County Layer Transformation'
         verbose_name_plural = 'County Layer Transformations'
         ordering = ['period','geoid', 'stratification']
+        
+class MetopioCityLayerTransformation(models.Model):
+    layer = models.CharField(max_length=50, default='City')
+    geoid = models.CharField(max_length=50)  # Change this to CharField
+    topic = models.CharField(max_length=50, default='FVDEYLCV')
+    stratification = models.TextField(blank=True)
+    period = models.CharField(max_length=20)
+    value = models.PositiveIntegerField()
+
+    class Meta:
+        verbose_name = 'City Layer Transformation'
+        verbose_name_plural = 'City Layer Transformations'
+        ordering = ['period']

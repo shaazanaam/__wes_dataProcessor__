@@ -9,7 +9,8 @@ from .models import (
     CountyGEOID, 
     MetopioStateWideLayerTransformation, 
     ZipCodeLayerTransformation,
-    SchoolAddressFile
+    SchoolAddressFile,
+    MetopioCityLayerTransformation
 )
 from django.db import transaction
 import logging
@@ -451,3 +452,114 @@ class DataTransformer:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
+
+# data_processor/transformers.py
+    def transform_Metopio_CityLayer(self):
+        try:
+            logger.info("Starting Metopio City Layer Transformation...")
+                   
+            # Remaining transformation logic
+
+            # Fetch and filter County GEOID entries
+            county_geoid_entries = CountyGEOID.objects.filter(layer="City or town")
+            logger.info(f"Filtered County GEOID entries count: {county_geoid_entries.count()}")
+
+            # Create a map to store the City and its corresponding GEOID from the County GEOID entries
+            city_geoid_map = {entry.name: entry.geoid for entry in county_geoid_entries}
+            logger.info(f"City GEOID map: {city_geoid_map}")
+
+            # Fetch and join SchoolData with SchoolAddressFile dynamically
+            school_data = (
+                SchoolData.objects.filter(
+                    ~Q(county__startswith ='['),                        # Exclude records with county names in square brackets
+                    county__in=['Outagamie', 'Winnebago', 'Calumet']  # Filter for specified counties
+
+                )
+                .prefetch_related('address_details')  # Fetch related address details in a single query
+                .distinct()  # Ensure unique records
+            )
+            logger.info(f"Filtered school data count: {school_data.count()}")
+
+            # Process records for transformation
+            grouped_data = {}
+            report_data = []  # Collect reporting data here
+
+            for record in school_data:
+                # Iterate over the related address_details objects
+                
+                for address_details in record.address_details.all():
+                   
+                    # Extract the city
+                    city = address_details.city + ", WI"   # Adding ", WI" to match the format in the CountyGEOID file
+
+                    # Map the city from the SchoolAddressFile  to its GEOID from the CountyGEOID file
+                    geoid = city_geoid_map.get(city, "Error")
+                    if geoid == "Error":
+                        logger.warning(f"GEOID not found for city: {city}")
+                        continue
+
+                    # Transform the period field
+                    school_year = record.school_year
+                    if '-' in school_year:
+                        start_year, end_year = school_year.split('-')
+                        period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
+                    else:
+                        period = school_year
+
+                    # Default to "Error" if stratification is None
+                    stratification = record.stratification.label_name if record.stratification else "Error"
+
+                    # Group by stratification and period
+                    strat_key = (stratification, geoid)
+
+                    if strat_key not in grouped_data:
+                        grouped_data[strat_key] = {
+                            "layer": "City or town",
+                            "geoid": geoid,
+                            "topic": "FVDEYLCV",
+                            "stratification": stratification,
+                            "period": period,
+                            "value": int(record.student_count) if record.student_count.isdigit() else 0,
+                        }
+                    else:
+                        grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+                        
+                    # Add to reporting data
+                    report_data.append({
+                        "school_year": record.school_year,
+                        "district_name": record.district_name,
+                        "school_name": record.school_name,
+                        "county": record.county,
+                        "city": city,
+                        "geoid": geoid,
+                        "stratification": stratification,
+                        "student_count": record.student_count,
+                    })
+            # Prepare transformed data for bulk insertion
+            transformed_data = [
+                MetopioCityLayerTransformation(
+                    layer=data["layer"],
+                    geoid=data["geoid"],
+                    topic=data["topic"],
+                    stratification=data["stratification"],
+                    period=data["period"],
+                    value=data["value"],
+                )
+                for data in grouped_data.values()
+            ]
+
+            # Insert transformed data in bulk
+            
+            with transaction.atomic():
+                MetopioCityLayerTransformation.objects.all().delete() # Clear existing data
+                MetopioCityLayerTransformation.objects.bulk_create(transformed_data)
+            logger.info(f"Successfully transformed {len(transformed_data)} records.")
+            
+            # Output the reporting data to a file or database
+            logger.info(f"Generated report with {len(report_data)} entries.")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error during Metopio City Layer Transformation: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False

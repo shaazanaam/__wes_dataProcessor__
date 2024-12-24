@@ -11,7 +11,8 @@ from .models import (
     MetopioTriCountyLayerTransformation,
     CountyLayerTransformation,
     MetopioStateWideLayerTransformation,
-    ZipCodeLayerTransformation,  # Add this line
+    ZipCodeLayerTransformation,
+    MetopioCityLayerTransformation,  # Add this line
 )
 from .forms import UploadFileForm
 from .models import ZipCodeLayerTransformation
@@ -88,6 +89,10 @@ def transformation_success(request):
         transformer = DataTransformer(request)
         transformer.transforms_Metopio_ZipCodeLayer()
         data_list = ZipCodeLayerTransformation.objects.all()
+    elif transformation_type == "City-Town":
+        transformer = DataTransformer(request)
+        transformer.transform_Metopio_CityLayer()
+        data_list = MetopioCityLayerTransformation.objects.all()
     else:
         # Handle unknown transformation types
         details = "Unknown transformation type. Please check your request."
@@ -263,61 +268,61 @@ def upload_file(request):
                     file, 
                     stratifications_file=stratifications_file,
                     )   # Process the main file and the uploaded file
-                
-            #Process the COunty GEOID file if provided
-            if county_geoid_file:
-                load_county_geoid_file(county_geoid_file)
-            if school_address_file:
-                load_school_address_file(school_address_file)
-                # after loading the school_address_file I am going to update the SchoolData model
-                # to take care of the Many-to-Many relationship
-                # But remember this only takes care of populating the relationship for the three counties
-                # Outagamie, Winnebago and Calumet and not for all the counties
-                
-                try:
-                    logger.info("Populating address_details for the SchoolData model...")
+            
+        #Process the COunty GEOID file if provided
+        if county_geoid_file:
+            load_county_geoid_file(county_geoid_file)
+        if school_address_file:
+            load_school_address_file(school_address_file)
+            # after loading the school_address_file I am going to update the SchoolData model
+            # to take care of the Many-to-Many relationship
+            # But remember this only takes care of populating the relationship for the three counties
+            # Outagamie, Winnebago and Calumet and not for all the counties
+            
+            try:
+                logger.info("Populating address_details for the SchoolData model...")
 
-                    # Fetch all the necessary data upfront
-                    school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
-                    school_data = SchoolData.objects.values("id", "district_code", "school_code")
+                # Fetch all the necessary data upfront
+                school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
+                school_data = SchoolData.objects.values("id", "district_code", "school_code")
 
-                    # Create a dictionary mapping (lea_code, school_code) to SchoolAddressFile ID
-                    address_map = {
-                        (address["lea_code"], address["school_code"]): address["id"]
-                        for address in school_address_data
-                    }
+                # Create a dictionary mapping (lea_code, school_code) to SchoolAddressFile ID
+                address_map = {
+                    (address["lea_code"], address["school_code"]): address["id"]
+                    for address in school_address_data
+                }
 
-                    # Prepare records for the intermediate table
-                    m2m_table_name = SchoolData.address_details.through._meta.db_table
-                    records_to_insert = []
+                # Prepare records for the intermediate table
+                m2m_table_name = SchoolData.address_details.through._meta.db_table
+                records_to_insert = []
 
-                    for school in school_data:
-                        address_id = address_map.get((school["district_code"], school["school_code"]))
-                        if address_id:
-                            records_to_insert.append((school["id"], address_id))
+                for school in school_data:
+                    address_id = address_map.get((school["district_code"], school["school_code"]))
+                    if address_id:
+                        records_to_insert.append((school["id"], address_id))
 
-                    # Delete existing Many-to-Many relationships
-                    with connection.cursor() as cursor:
-                        cursor.execute(f"DELETE FROM {m2m_table_name}")
+                # Delete existing Many-to-Many relationships
+                with connection.cursor() as cursor:
+                    cursor.execute(f"DELETE FROM {m2m_table_name}")
 
-                    # Insert new relationships in batches
-                    batch_size = 500
-                    with connection.cursor() as cursor:
-                        for i in range(0, len(records_to_insert), batch_size):
-                            batch = records_to_insert[i:i+batch_size]
-                            values = ", ".join(f"({school_id}, {address_id})" for school_id, address_id in batch)
-                            cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
+                # Insert new relationships in batches
+                batch_size = 500
+                with connection.cursor() as cursor:
+                    for i in range(0, len(records_to_insert), batch_size):
+                        batch = records_to_insert[i:i+batch_size]
+                        values = ", ".join(f"({school_id}, {address_id})" for school_id, address_id in batch)
+                        cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
 
-                    logger.info(f"Successfully populated {len(records_to_insert)} address details for SchoolData records.")
+                logger.info(f"Successfully populated {len(records_to_insert)} address details for SchoolData records.")
 
-                except Exception as e:
-                    logger.error(f"Error populating address details: {e}")
-                    raise   
-                # Redirect to the success page or back to upload with a success message
+            except Exception as e:
+                logger.error(f"Error populating address details: {e}")
+                raise   
+            # Redirect to the success page or back to upload with a success message
 
-                return redirect(
-                    f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation."
-                )
+            return redirect(
+                f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation."
+            )
         # After this step in the rendered page we have the transformation forms from where we can get the tranformation type
         # since we called the handle_uploaded_file function to process the file and save it to the database
         # we are already prepared to handle the transformation actions after the page as above has been rendered
@@ -325,21 +330,18 @@ def upload_file(request):
         transformation_type = request.POST.get("transformation_type")
         if transformation_type:
             transformer = DataTransformer(request)  # Create an instance of the DataTransformer class
-            
             if transformation_type == "Tri-County":
-                
                 success = (transformer.apply_tri_county_layer_transformation())  # Apply the Tri-County Layer transformation
-            
             elif transformation_type == "County-Layer":
-
-                success = transformer.apply_county_layer_transformation()  # Apply County Layer transformation
-            
+                success = transformer.apply_county_layer_transformation()        # Apply County Layer transformation
             elif transformation_type == "Metopio Statewide":
-                success = transformer.transform_Metopio_StateWideLayer() # Apply Metopio Statewide transformation
+                success = transformer.transform_Metopio_StateWideLayer()         # Apply Metopio Statewide transformation
             elif transformation_type == "Zipcode":
-                success = transformer.transforms_Metopio_ZipCodeLayer() # Apply Metopio Zipcode transformation    
+                success = transformer.transforms_Metopio_ZipCodeLayer()          # Apply Metopio Zipcode transformation 
+            elif transformation_type == "City-Town":
+                success = transformer.transform_Metopio_CityLayer()              # Apply Metopio City-Town transformation
             else:
-                success = transformer.apply_transformation(transformation_type )  # Apply the transformation
+                success = transformer.apply_transformation(transformation_type ) # Apply the transformation
 
             # If transformation was successful, redirect to the success page
             if success:
@@ -600,7 +602,29 @@ def metopio_zipcode_view(request):
         {"data": data, "transformation_type": transformation_type},
     )
 
+#City or Town View
 
+def city_town_view(request):
+    transformation_type = request.GET.get(
+        "type", "City-Town"
+    )  # Default to 'City-Town' if not specified
+    print(f"Query Parameters: {request.GET}")  # Log query parameters
+    # Fetch the data from the Metopio Data Transformation model
+    DataTransformer.transform_Metopio_CityLayer(request)
+    data_list = MetopioCityLayerTransformation.objects.all()
+    """ View to display the City-Town data """
+
+    # Pagiante the Results
+    paginator = Paginator(data_list, 20)  # Show 30 records per page
+    page_number = request.GET.get("page")
+    data = paginator.get_page(page_number)
+
+    # pass the data to the template file
+    return render(
+        request,
+        "__data_processor__/city_town.html",
+        {"data": data, "transformation_type": transformation_type},
+    )
 #OUTPUT DOWNLOADS
 ##EXCEL HANDLE ##
 
@@ -661,6 +685,8 @@ def generate_transformed_csv(transformation_type):
         data = MetopioStateWideLayerTransformation.objects.all()
     elif transformation_type == "Zipcode":
         data = ZipCodeLayerTransformation.objects.all()
+    elif transformation_type == "City-Town":
+        data = MetopioCityLayerTransformation.objects.all()
     else:
         data = TransformedSchoolData.objects.filter(
             place="WI"
