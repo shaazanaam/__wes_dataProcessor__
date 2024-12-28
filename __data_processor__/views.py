@@ -267,17 +267,17 @@ def upload_file(request):
                 handle_uploaded_file(
                     file, 
                     stratifications_file=stratifications_file,
-                    )   # Process the main file and the uploaded file
+                    )   # Process the main file and the stratification uploaded file
             
         #Process the COunty GEOID file if provided
         if county_geoid_file:
             load_county_geoid_file(county_geoid_file)
         if school_address_file:
             load_school_address_file(school_address_file)
-            # after loading the school_address_file I am going to update the SchoolData model
+            # after loading the school_address_file we are going to  update the SchoolData model
             # to take care of the Many-to-Many relationship
-            # But remember this only takes care of populating the relationship for the three counties
-            # Outagamie, Winnebago and Calumet and not for all the counties
+            # We will be tryng to handle the Many to Many relationship population of the SchoolData model
+            # by bypassing  the bulk updates and rather use the native SQL for batch processing
             
             try:
                 logger.info("Populating address_details for the SchoolData model...")
@@ -286,13 +286,33 @@ def upload_file(request):
                 school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
                 school_data = SchoolData.objects.values("id", "district_code", "school_code")
 
-                # Create a dictionary mapping (lea_code, school_code) to SchoolAddressFile ID
+                # Create a dictionary mapping (lea_code, school_code) from the  SchoolAddressFile ID
+                
                 address_map = {
                     (address["lea_code"], address["school_code"]): address["id"]
                     for address in school_address_data
                 }
 
                 # Prepare records for the intermediate table
+                # Please notice that we are not going to be inserting the entire school object or the complete dictionary
+                # of the school data -- we are just inserting  the value corresponding to id key in the school dictionary
+                # What then goes into the records_to_insert is the id of the school and the id of the address
+                # records_to_insert =  is a list of tuples containing the school["id"] and the address_id
+                # please also note that both the school["id"] and the address_id are the primary keys 
+                # of the corresponding school records in the SchoolData and SchoolAddressFile models respectively
+                # Why only ids are Inserted:
+                # The Many-to-Many relationship between the SchoolData and SchoolAddressFile  is being stored in an intermediate 
+                # table that Django creates automatically. This table has two columns: schooldata_id and schooladdressfile_id.
+                # this table only needs to know which schooldata_id( the id of the school) corresponds to which 
+                # schooladdressfile_id (the id of the address).
+                # Storing only the id values ensures minimal redundancy and optimal storage.
+                # The id value in the school_data dictionary
+                # ({'id': 2080317, 'district_code': '8022', 'school_code': '8148'}) 
+                # represents the primary key of the corresponding SchoolData object
+                # Please also understand that key for the  dictioary for the address map ais actually the tuple of the lea_code and the school_code
+                # so the address_map.get((school["district_code"], school["school_code"])) will return the id of the address
+                
+                
                 m2m_table_name = SchoolData.address_details.through._meta.db_table
                 records_to_insert = []
 
@@ -306,6 +326,14 @@ def upload_file(request):
                     cursor.execute(f"DELETE FROM {m2m_table_name}")
 
                 # Insert new relationships in batches
+                # values =", ".join(f"({school_id}, {address_id})" for school_id, address_id in records_to_insert)
+                # Converts the batch into a string representation for the SQL insert query
+                # for example for a batch of [(1, 2), (3, 4), (5, 6)]
+                # the values will be "(1, 2), (3, 4), (5, 6)"
+                # then cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
+                # inserts the values into the intermediate table M2M  join table
+                # for a batch of 500 records at a time this means inserting 500 rows in a single query
+                
                 batch_size = 500
                 with connection.cursor() as cursor:
                     for i in range(0, len(records_to_insert), batch_size):
