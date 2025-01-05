@@ -200,6 +200,10 @@ def handle_uploaded_file(f, stratifications_file=None):
                 # Opens the main file and then constructs a key ( combined_key)
                 # by concatenating the GROUP_BY and the GROUP_BY_VALUE for each row
                 # uses the strat_map to find the coreesponding Stratification object for the combined_key
+                # and then creates a SchoolData object with the corresponding Stratification object
+                # and appends it to the data list
+                # The data list is then bulk inserted into the SchoolData table
+                # This ensures that the data is inserted in a single transaction
                 for row in reader:
                     combined_key = row["GROUP_BY"] + row["GROUP_BY_VALUE"]
                     stratification = strat_map.get(combined_key)
@@ -225,7 +229,12 @@ def handle_uploaded_file(f, stratifications_file=None):
                             group_by_value=row["GROUP_BY_VALUE"],
                             student_count=row["STUDENT_COUNT"],
                             percent_of_group=row["PERCENT_OF_GROUP"],
-                            stratification=stratification,  # stratification field is set to the corresponding Stratification object
+                            stratification=stratification, 
+                            # stratification field is set to the corresponding Stratification object
+                            # for the combined_key (group_by + group_by_value) if it exists in the strat_map
+                            # otherwise it is set to None (NULL in the database table SchoolData) 
+                            # This ensures that the stratification field is properly linked to the Stratification model
+                            # using the foreign key relationship (stratification_id in the SchoolData table)
                         )
                     )
 
