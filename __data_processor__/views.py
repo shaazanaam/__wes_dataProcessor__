@@ -235,6 +235,8 @@ def handle_uploaded_file(f, stratifications_file=None):
                             # otherwise it is set to None (NULL in the database table SchoolData) 
                             # This ensures that the stratification field is properly linked to the Stratification model
                             # using the foreign key relationship (stratification_id in the SchoolData table)
+                            # This is a Many-to-One relationship between the SchoolData and Stratification models
+                            # where each SchoolData object can have only one Stratification object
                         )
                     )
 
