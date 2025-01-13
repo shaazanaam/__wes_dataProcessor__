@@ -204,6 +204,7 @@ def handle_uploaded_file(f, stratifications_file=None):
                 # and appends it to the data list
                 # The data list is then bulk inserted into the SchoolData table
                 # This ensures that the data is inserted in a single transaction
+                # and the database is not locked for a long time
                 for row in reader:
                     combined_key = row["GROUP_BY"] + row["GROUP_BY_VALUE"]
                     stratification = strat_map.get(combined_key)
