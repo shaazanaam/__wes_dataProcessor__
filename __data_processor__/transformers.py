@@ -400,7 +400,7 @@ class DataTransformer:
 
                     if strat_key not in grouped_data:
                         grouped_data[strat_key] = {
-                            "layer": "ZipCode",
+                            "layer": "Zip code",
                             "geoid": geoid,
                             "topic": "FVDEYLCV",
                             "stratification": stratification,
