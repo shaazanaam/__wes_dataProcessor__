@@ -350,7 +350,7 @@ class DataTransformer:
             county_geoid_entries = CountyGEOID.objects.filter(layer="Zip code")
             logger.info(f"Filtered County GEOID entries count: {county_geoid_entries.count()}")
 
-            # Create a map to store the Zip Code and its corresponding GEOID from the County GEOID entries
+            # Create a map to store the Zip Code and its corresponding GEOID from the CountyGEOID entries
             zip_code_geoid_map = {entry.name: entry.geoid for entry in county_geoid_entries}
             logger.info(f"Zip Code GEOID map: {zip_code_geoid_map}")
 
