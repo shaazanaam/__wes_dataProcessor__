@@ -52,6 +52,7 @@ def data_processor_home(request):
 
 
 ## Create a view and template to display a success message after the transformation
+##  This is to show the user that the transformation was successful and provide a link to view the transformed data
 
 
 def transformation_success(request):
