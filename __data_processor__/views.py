@@ -126,6 +126,7 @@ def transformation_success(request):
 # Uses Bulk Operations ; Employs bulk insertion to to efficiently save data
 # Handles the error gracefully : Implements the retry mechanism to handle database locking errors
 # Links the data in the SchoolData and the Stratification using the foreign key
+#Addition of the Stratification file upload and processing
 
 # handling to load the main file and the stratification file
 def handle_uploaded_file(f, stratifications_file=None):
