@@ -130,150 +130,140 @@ def transformation_success(request):
 
 # handling to load the main file and the stratification file
 def handle_uploaded_file(f, stratifications_file=None):
-    # Save to a Directory in Your Project: Create a directory within your project to
-    # store uploaded files. For example, create a directory called uploads in your project root.
-    upload_dir = os.path.join(settings.BASE_DIR, "uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f.name)
-
-    # Save  and process the Main File
-    with open(file_path, "wb+") as destination:
-        for chunk in f.chunks():
-            destination.write(chunk)
-    logger.info(f"File uploaded successfully to {file_path}")
-
-    #  If the stratification file is provided process it and Save it to the uploads directory
-    strat_map = {}
-    if stratifications_file:
-        strat_file_path = os.path.join(upload_dir, stratifications_file.name)
-        with open(strat_file_path, "wb+") as destination:
-            for chunk in stratifications_file.chunks():
+    """ Handle file upload and process main and stratification files """
+    try:
+        # Save uploaded files
+        upload_dir = os.path.join(settings.BASE_DIR, "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, f.name)
+        
+        with open(file_path, "wb+") as destination:
+            for chunk in f.chunks():
                 destination.write(chunk)
-        logger.info(f"Stratification file uploaded successfully to {strat_file_path}")
+        logger.info(f"File uploaded successfully to {file_path}")
 
-        # Load stratifications into the database
-        try:
-            with open(strat_file_path, "r") as strat_file:
-                strat_reader = csv.DictReader(strat_file)
-                Stratification.objects.all().delete()  # Clear existing stratifications
-                for row in strat_reader:
-                    group_by = row["GROUP_BY"]
-                    group_by_value = row["GROUP_BY_VALUE"]
-                    label_name = row["Stratification"]
+        # Process stratification file if provided
+        strat_map = {}
+        if stratifications_file:
+            strat_file_path = os.path.join(upload_dir, stratifications_file.name)
+            with open(strat_file_path, "wb+") as destination:
+                for chunk in stratifications_file.chunks():
+                    destination.write(chunk)
+            logger.info(f"Stratification file uploaded successfully to {strat_file_path}")
 
-                    # creates Stratification object in the database
-                    # for each unique combination of group_by and group_by_value
+            # Load stratifications into the database
+            try:
+                with open(strat_file_path, "r") as strat_file:
+                    strat_reader = csv.DictReader(strat_file)
+                    Stratification.objects.all().delete()
+                    for row in strat_reader:
+                        group_by = "Grade Level" if row["GROUP_BY"] == "Grade" else row["GROUP_BY"]
+                        group_by_value = row["GROUP_BY_VALUE"]
+                        label_name = row["Stratification"]
 
-                    strat, created = Stratification.objects.get_or_create(
-                        group_by=group_by,
-                        group_by_value=group_by_value,
-                        label_name=label_name,
-                    )
-                    # Builds a dictionary (strat_map) mapping the combination of the group_by and group_by_value
-                    # to the label_name
-                    # This will be used to assign the stratification to the SchoolData objects
+                        strat, created = Stratification.objects.get_or_create(
+                            group_by=group_by,
+                            group_by_value=group_by_value,
+                            label_name=label_name,
+                        )
+                        strat_map[f"{group_by}{group_by_value}"] = strat
+            except Exception as e:
+                logger.error(f"Error processing stratifications file: {e}")
+                raise
 
-                    strat_map[f"{group_by}{group_by_value}"] = strat.label_name
-        except Exception as e:
-            logger.error(f"Error processing stratifications file: {e}")
-            raise
+        # Process the main file
+        retries = 5
+        while retries > 0:
+            try:
+                with open(file_path, "r") as file:
+                    reader = csv.DictReader(file)
+                    SchoolData.objects.all().delete()
+                    data = []
 
-    # Process the Main file  to write to the data base
-    retries = 5
-    while retries > 0:
-        try:
-            with open(file_path, "r") as file:
-                reader = csv.DictReader(file)
-                # Clear the existing data in the SchoolData table to avoid duplicates
-                # THIS ENSIRES THAT THE DATA BASE IS CLEANED BEFORE INSERTING NEW DATA
-                SchoolData.objects.all().delete()
-                data = []
+                    strat_map = {
+                        f"{strat.group_by}{strat.group_by_value}": strat
+                        for strat in Stratification.objects.all()
+                    }
 
-                # Re-Builds a dictionary(strat_map) mapping  each combination of group_by and 
-                # group_by_value
-                # from the Stratification model to its corresponding Stratification object
-
-                strat_map = {
-                    f"{strat.group_by}{strat.group_by_value}": strat
-                    for strat in Stratification.objects.all()
-                }
-
-                # Parse the file and prepare the data for insertion
-                # Opens the main file and then constructs a key ( combined_key)
-                # by concatenating the GROUP_BY and the GROUP_BY_VALUE for each row
-                # uses the strat_map to find the coreesponding Stratification object for the combined_key
-                # and then creates a SchoolData object with the corresponding Stratification object
-                # and appends it to the data list
-                # The data list is then bulk inserted into the SchoolData table
-                # This ensures that the data is inserted in a single transaction
-                # and the database is not locked for a long time
-                for row in reader:
-                    
-                    if (
-                        row["STUDENT_COUNT"] == "*"
-                        or row["GROUP_BY_VALUE"] == "[Data Suppressed]"
-                        ):
+                    for row in reader:
+                        group_by = "Grade Level" if row["GROUP_BY"] == "Grade" else row["GROUP_BY"]
+                        combined_key = group_by + row["GROUP_BY_VALUE"]
+                        stratification = strat_map.get(combined_key)
                         
-                        ## this is where I need to add the Unkown values 
-                        unkown_key = row["GROUP_BY"] + "Unknown"
-                        # Check if an entry for the (GROUP_BY +"Unknown") combination exists in the strat_map
-                        existing_label = strat_map.get(unkown_key).label_name if unkown_key in strat_map else "Unknown"
-                        
-                        #Create or get the Stratification object for the (GROUP_BY +"Unknown") combination
-                     
-                        
-                        stratification, created = Stratification.objects.get_or_create(
-                            group_by=row["GROUP_BY"],
+                        data.append(
+                            SchoolData(
+                                school_year=row["SCHOOL_YEAR"],
+                                agency_type=row["AGENCY_TYPE"],
+                                cesa=row["CESA"],
+                                county=row["COUNTY"],
+                                district_code=row["DISTRICT_CODE"],
+                                school_code=row["SCHOOL_CODE"],
+                                grade_group=row["GRADE_GROUP"],
+                                charter_ind=row["CHARTER_IND"],
+                                district_name=row["DISTRICT_NAME"],
+                                school_name=row["SCHOOL_NAME"],
+                                group_by=group_by,
+                                group_by_value=row["GROUP_BY_VALUE"],
+                                student_count=row["STUDENT_COUNT"],
+                                percent_of_group=row["PERCENT_OF_GROUP"],
+                                stratification=stratification,
+                            )
+                        )
+
+                # Ensure 'Unknown' values for Gender and Grade Level are added manually
+                missing_unknowns = [
+                    {"group_by": "Gender", "group_by_value": "Unknown", "label_name": "UNK7"},
+                    {"group_by": "Grade Level", "group_by_value": "Unknown", "label_name": "UNK8"}
+                ]
+
+                for entry in missing_unknowns:
+                    stratification = strat_map.get(f"{entry['group_by']}Unknown")
+                    if stratification is None:
+                        stratification, _ = Stratification.objects.get_or_create(
+                            group_by=entry["group_by"],
                             group_by_value="Unknown",
-                            label_name= existing_label, # use defaults to avoid the duplicate error
+                            label_name=entry["label_name"]
                         )
-                        # Update the mapping for future lookups
-                        strat_map[unkown_key] = stratification
-                        # Set the stratification field to the corresponding Stratification object
-                    combined_key = row["GROUP_BY"] + row["GROUP_BY_VALUE"]
-                    stratification = strat_map.get(combined_key)   
-                    data.append(
-                        SchoolData(
-                            school_year=row["SCHOOL_YEAR"],
-                            agency_type=row["AGENCY_TYPE"],
-                            cesa=row["CESA"],
-                            county=row["COUNTY"],
-                            district_code=row["DISTRICT_CODE"],
-                            school_code=row["SCHOOL_CODE"],
-                            grade_group=row["GRADE_GROUP"],
-                            charter_ind=row["CHARTER_IND"],
-                            district_name=row["DISTRICT_NAME"],
-                            school_name=row["SCHOOL_NAME"],
-                            group_by=row["GROUP_BY"],
-                            group_by_value=row["GROUP_BY_VALUE"],
-                            student_count=row["STUDENT_COUNT"],
-                            percent_of_group=row["PERCENT_OF_GROUP"],
-                            stratification=stratification, 
-                            # stratification field is set to the corresponding Stratification object
-                            # for the combined_key (group_by + group_by_value) if it exists in the strat_map
-                            # otherwise it is set to None (NULL in the database table SchoolData) 
-                            # This ensures that the stratification field is properly linked to the Stratification model
-                            # using the foreign key relationship (stratification_id in the SchoolData table)
-                            # This is a Many-to-One relationship between the SchoolData and Stratification models
-                            # where each SchoolData object can have only one Stratification object
+                        strat_map[f"{entry['group_by']}Unknown"] = stratification
+
+                    exists_in_school_data = SchoolData.objects.filter(group_by=entry["group_by"], group_by_value="Unknown").exists()
+                    if not exists_in_school_data:
+                        data.append(
+                            SchoolData(
+                                school_year="2023-24",  # Default year
+                                agency_type="Unknown",
+                                cesa="Unknown",
+                                county="Unknown",
+                                district_code="000",
+                                school_code="000",
+                                grade_group="Unknown",
+                                charter_ind="Unknown",
+                                district_name="Unknown",
+                                school_name="Unknown",
+                                group_by=entry["group_by"],
+                                group_by_value="Unknown",
+                                student_count="0",  # Placeholder
+                                percent_of_group="0",
+                                stratification=stratification,
+                            )
                         )
-                    )
+                        logger.info(f"Manually inserted missing Unknown value for {entry['group_by']}")
 
                 # Insert new data into the database
-
                 SchoolData.objects.bulk_create(data)
                 logger.info(f"{len(data)} records inserted into the database")
                 break
-        except OperationalError as e:
-            if "database is locked" in str(e):
-                retries -= 1
-                logger.warning(
-                    f"Database is locked, retrying... ({5 - retries} retries left)"
-                )
-                time.sleep(1)  # Wait for 1 second before retrying
-            else:
-                logger.error(f"Error processing file: {e}")
-                raise
+            except OperationalError as e:
+                if "database is locked" in str(e):
+                    retries -= 1
+                    logger.warning(f"Database is locked, retrying... ({5 - retries} retries left)")
+                    time.sleep(1)
+                else:
+                    logger.error(f"Error processing file: {e}")
+                    raise
+    except Exception as e:
+        logger.error(f"Error handling file upload: {e}")
+        raise
 
 
 # data_processor/views.py
