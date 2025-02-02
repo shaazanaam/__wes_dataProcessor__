@@ -169,7 +169,7 @@ def handle_uploaded_file(f, stratifications_file=None):
                         group_by_value=group_by_value,
                         label_name=label_name,
                     )
-                    # Builds a dictionay(strat_map) mapping the combination of the group_by and group_by_value
+                    # Builds a dictionary (strat_map) mapping the combination of the group_by and group_by_value
                     # to the label_name
                     # This will be used to assign the stratification to the SchoolData objects
 
@@ -189,7 +189,7 @@ def handle_uploaded_file(f, stratifications_file=None):
                 SchoolData.objects.all().delete()
                 data = []
 
-                # Builds a dictionary(strat_map) mapping  each combination of group_by and 
+                # Re-Builds a dictionary(strat_map) mapping  each combination of group_by and 
                 # group_by_value
                 # from the Stratification model to its corresponding Stratification object
 
@@ -208,14 +208,30 @@ def handle_uploaded_file(f, stratifications_file=None):
                 # This ensures that the data is inserted in a single transaction
                 # and the database is not locked for a long time
                 for row in reader:
-                    combined_key = row["GROUP_BY"] + row["GROUP_BY_VALUE"]
-                    stratification = strat_map.get(combined_key)
-
+                    
                     if (
                         row["STUDENT_COUNT"] == "*"
                         or row["GROUP_BY_VALUE"] == "[Data Suppressed]"
-                    ):
-                        continue
+                        ):
+                        
+                        ## this is where I need to add the Unkown values 
+                        unkown_key = row["GROUP_BY"] + "Unknown"
+                        # Check if an entry for the (GROUP_BY +"Unknown") combination exists in the strat_map
+                        existing_label = strat_map.get(unkown_key).label_name if unkown_key in strat_map else "Unknown"
+                        
+                        #Create or get the Stratification object for the (GROUP_BY +"Unknown") combination
+                     
+                        
+                        stratification, created = Stratification.objects.get_or_create(
+                            group_by=row["GROUP_BY"],
+                            group_by_value="Unknown",
+                            label_name= existing_label, # use defaults to avoid the duplicate error
+                        )
+                        # Update the mapping for future lookups
+                        strat_map[unkown_key] = stratification
+                        # Set the stratification field to the corresponding Stratification object
+                    combined_key = row["GROUP_BY"] + row["GROUP_BY_VALUE"]
+                    stratification = strat_map.get(combined_key)   
                     data.append(
                         SchoolData(
                             school_year=row["SCHOOL_YEAR"],

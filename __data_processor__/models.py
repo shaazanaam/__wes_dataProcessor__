@@ -74,6 +74,7 @@ class SchoolData(models.Model):
         return f"{self.school_name} - {self.district_name}"
     
         # Set related_name to 'school_address_details' in the
+        # ManyToManyField to avoid conflicts with the reverse
         # to allow the reverse querying from the SchoolAddressFile model to fetch related SchoolData instances
         #Retained the existing field names for the (district_code and the school_code) in SchoolData for storage byt
         # added the foreign key relationship to the SchoolAddressFile model to store the address details of the school

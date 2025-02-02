@@ -10,7 +10,8 @@ from .models import (
     MetopioStateWideLayerTransformation, 
     ZipCodeLayerTransformation,
     SchoolAddressFile,
-    MetopioCityLayerTransformation
+    MetopioCityLayerTransformation,
+    Stratification
 )
 from django.db import transaction
 import logging
@@ -106,57 +107,89 @@ class DataTransformer:
 
             # Group data by stratification and period
             grouped_data = {}
+            group_by_sums = {}  # Store sum of values per GROUP_BY
+            all_students_data = {}  # Store "All Student" records
+
             for record in school_data:
                 # Transform the period field
                 school_year = record.school_year
                 if '-' in school_year:
-                    start_year, end_year = school_year.split('-')  # unpacks the tuple
-                    period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
+                    start_year, end_year = school_year.split('-')
+                    period = f"{start_year}-20{end_year}"
                 else:
                     period = school_year
 
-                # Default to "Error" if stratification is None
-                # we are reaching out to the related Stratification object via the Foreign Key relation 
-                # and getting the label_name attribute
-                stratification = record.stratification.label_name if record.stratification else "Error"
+                # Get stratification label (default to "Unknown" if missing)
+                strat_label = record.stratification.label_name if record.stratification else "Unknown"
 
-                # Group by stratification and period
-                # The strat_key uniquely represents the combination of stratification and period
-                # grouped data is a dictionary where key are strat_key tuples
-                strat_key = (stratification, period)
-                if strat_key not in grouped_data:
-                    grouped_data[strat_key] = {
-                        "layer": "Region",
-                        "geoid": "fox-valley",
-                        "topic": "FVDEYLCV",
-                        "stratification": stratification,
-                        "period": period,
-                        "value": int(record.student_count) if record.student_count.isdigit() else 0,
-                    }
-                else:
-                # if the strat_key is already in the grouped_data dictionary, we just add the student_count  from the current record
-                # This ensures that all student_count values for the records with the same stratification and period are summed up
-                    grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+                # Get GROUP_BY and GROUP_BY_VALUE safely
+                group_by = record.group_by if record.group_by else "Unknown"
+                group_by_value = record.group_by_value if record.group_by_value else "Unknown"
 
-            # Prepare transformed data for bulk insertion
+                # Convert student_count safely
+                student_count = record.student_count
+                total_value = int(float(student_count)) if student_count and student_count.replace('.', '', 1).isdigit() else 0
+
+                # Grouping key: (Stratification Label, Period)
+                strat_key = (strat_label, period, group_by, group_by_value)
+
+                # Store sum of values per GROUP_BY
+                if group_by not in group_by_sums:
+                    group_by_sums[group_by] = 0
+                group_by_sums[group_by] += total_value
+
+                # Identify "All Student" records
+                if group_by == "All Students" and group_by_value == "All Students":
+                    all_students_data[(strat_label, period)] = total_value
+
+                # Use setdefault for efficiency
+                grouped_data.setdefault(strat_key, {
+                    "layer": "Region",
+                    "geoid": "fox-valley",
+                    "topic": "FVDEYLCV",
+                    "period": period,
+                    "group_by": group_by,
+                    "group_by_value": group_by_value,
+                    "total_value": 0,  
+                    "stratifications": strat_label
+                })
+                grouped_data[strat_key]["total_value"] += total_value  # Sum up values
+
+            #  Step 3: Compute 'Unknown' Values Where Needed
+            for (strat_label, period, group_by, group_by_value), data in grouped_data.items():
+                if group_by_value == "Unknown":
+                    # Check if there's an "All Student" value for this period
+                    all_students_value = all_students_data.get((strat_label, period), 0)
+                    known_total = group_by_sums.get(group_by, 0)
+
+                    # Subtract known total from "All Students"
+                    unknown_value = max(all_students_value - known_total, 0)  # Avoid negative values
+
+                    # Update total value for the "Unknown" entry
+                    data["total_value"] = unknown_value
+
+            # Step 4: Convert dictionary to model instances
             transformed_data = [
                 MetopioTriCountyLayerTransformation(
                     layer=data["layer"],
                     geoid=data["geoid"],
                     topic=data["topic"],
-                    stratification=data["stratification"],
+                    stratification=data["stratifications"],
                     period=data["period"],
-                    value=data["value"],
+                    value=data["total_value"],
                 )
                 for data in grouped_data.values()
             ]
 
-            # Insert transformed data in bulk
-            with transaction.atomic():
-                MetopioTriCountyLayerTransformation.objects.all().delete()  # Clear existing data
-                MetopioTriCountyLayerTransformation.objects.bulk_create(transformed_data)
+            # Step 5: Insert transformed data in bulk if not empty
+            if transformed_data:
+                with transaction.atomic():
+                    MetopioTriCountyLayerTransformation.objects.all().delete()
+                    MetopioTriCountyLayerTransformation.objects.bulk_create(transformed_data)
+                logger.info(f"Successfully transformed {len(transformed_data)} records.")
+            else:
+                logger.info("No transformed data to insert.")
 
-            logger.info(f"Successfully transformed {len(transformed_data)} records.")
             return True
 
         except Exception as e:
