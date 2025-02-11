@@ -13,7 +13,10 @@ from .models import (
     MetopioCityLayerTransformation,
     Stratification
 )
+
+
 from django.db import transaction
+from django.db import models
 import logging
 import traceback
 from django.db.models import Q, F
@@ -100,26 +103,41 @@ class DataTransformer:
             )
             logger.info(f"Filtered school data count: {school_data.count()}")
 
-            grouped_data, group_by_sums, all_students_data, original_unknowns = {}, {}, {}, {}
+            grouped_data, group_by_sums, all_students_data, original_unknowns, aggregated_data = {}, {}, {}, {}, {}
 
             for record in school_data:
                 period = f"{record.school_year.split('-')[0]}-20{record.school_year.split('-')[1]}" if '-' in record.school_year else record.school_year
                 strat_label = record.stratification.label_name if record.stratification else "Unknown"
                 group_by, group_by_value = record.group_by, record.group_by_value
+                
+                # Convert student_count to integer if it is a digit, else default to 0
                 total_value = int(float(record.student_count)) if record.student_count.replace('.', '', 1).isdigit() else 0
-
+                
+                # Group by stratification, period, group_by, and group_by_value    
                 strat_key = (strat_label, period, group_by, group_by_value)
+                
+                # Store the sum of group_by values for each group_by
                 group_by_sums[group_by] = group_by_sums.get(group_by, 0) + total_value
+                
+                # Store the 'All Students' data for later calculation
                 if group_by == "All Students" and group_by_value == "All Students":
                     all_students_data[(strat_label, period)] = total_value
+                
+                # Store the original 'Unknown' values for later calculation
                 if group_by_value == "Unknown":
                     original_unknowns[(strat_label, period, group_by)] = total_value
 
+                # Group and aggregate by strat_label, period, group_by, and group_by_value
                 grouped_data.setdefault(strat_key, {
-                    "layer": "Region", "geoid": "fox-valley", "topic": "FVDEYLCV",
-                    "period": period, "value": 0, "stratification": strat_label
+                    "layer": "Region",
+                    "geoid": "fox-valley", 
+                    "topic": "FVDEYLCV",
+                    "period": period, 
+                    "value": 0, 
+                    "stratification": strat_label
                 })["value"] += total_value
 
+            # Calculate the 'Unknown' values for each group_by
             for (strat_label, period, group_by, group_by_value), data in grouped_data.items():
                 if group_by_value == "Unknown":
                     known_total = group_by_sums.get(group_by, 0)
@@ -133,7 +151,7 @@ class DataTransformer:
                 "stratification": data["stratification"],
                 "period": data["period"],
                 "value": data["value"]
-            }) for data in grouped_data.values()]
+            }) for data in grouped_data.values() if data["value"]!=0] # Exclude zero values during bulk insertion
 
             if transformed_data:
                 with transaction.atomic():
@@ -153,91 +171,113 @@ class DataTransformer:
 
     def apply_county_layer_transformation(self):
         try:
+            # Reinitialize school Data
             logger.info("Starting County Layer Transformation...")
 
-            #Fetch  and filter County GEOID entries for 'Layer = County'
-            county_geoid_entries= CountyGEOID.objects.filter(layer='County')
-            logger.info(f"County  GEOID entries count: {county_geoid_entries.count()}")
+            # Fetch County GEOID entries
+            county_geoid_entries = CountyGEOID.objects.filter(layer='County')
+            county_geoid_map = {entry.name.split(" County, WI")[0].strip(): entry for entry in county_geoid_entries}
 
-            #Create a map to store the county name and its corresponding GEOID (or rather CountyGEOID instance)
-            county_geoid_map = {}
+            logger.info(f"County GEOID entries count: {len(county_geoid_map)}")
 
-            for entry in county_geoid_entries:
-                #Extract the initial portion of the county name before any comma
-                county_name = entry.name.split(" County, WI")[0].strip()
-                county_geoid_map[county_name] = entry # We change the entry.geoid to just entry  because entry is the instance itself
-            logger.info(F"County GEOID map: {county_geoid_map}")
-
-         
-            # Fetch school data for counties of interest
+            # STEP 2: Refresh dataset to include "Unknown" records
             school_data = SchoolData.objects.filter(
-                county__in=county_geoid_map.keys(),
-                school_name="[Districtwide]",
+                models.Q(school_name="[Districtwide]") &
+                models.Q(county__in=county_geoid_map.keys())
             )
+            logger.info(f"Refetched school data count: {school_data.count()}")
 
-            logger.info(f"Filtered school data count: {school_data.count()}")
+            # STEP 3: Group Data
+            grouped_data, group_by_sums, original_unknowns = {}, {}, {}
 
-            #Group the data by stratification and period
-            grouped_data = {}
-            transformed_data = []
             for record in school_data:
-                # Transform the period field
-                school_year = record.school_year
-                if "-" in school_year:
-                    start_year, end_year = school_year.split("-")
-                    period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
-                else:
-                    period = school_year
+                period = f"{record.school_year.split('-')[0]}-20{record.school_year.split('-')[1]}" if "-" in record.school_year else record.school_year
+                strat_label = record.stratification.label_name 
+                group_by, group_by_value = record.group_by, record.group_by_value
+                geoid = county_geoid_map.get(record.county).geoid if county_geoid_map.get(record.county) else "Error"
 
-                # Map the county to its GEOID instance 
-                geoid = county_geoid_map.get(record.county, "Error").geoid
-                 
                 if geoid == "Error":
-                 logger.warning(f"County GEOID not found for county: {record.county}")
+                    logger.warning(f"County GEOID not found for county: {record.county}")
 
-                 # Default to "Error" if stratification is None
-                stratification = record.stratification.label_name if record.stratification else "Error" 
+                total_value = int(record.student_count) if record.student_count.isdigit() else 0
+                strat_key = (strat_label, period, group_by, group_by_value, record.county)
+
+                # Track group_by sums
+                group_by_sums[group_by] = group_by_sums.get(group_by, 0) + total_value
+                #logger.info(f"Group by sums: {group_by_sums}")
+                # Store original 'Unknown' values for later calculation
+                if group_by_value == "Unknown":
+                    
+                    original_unknowns[(strat_label, period, group_by)] = total_value
+                    logger.info(f"Original Unknowns: {original_unknowns}")
+                    known_total = group_by_sums.get(group_by, 0)
+                    max_group_total = max(group_by_sums.values(), default=0)
+                    total_value = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
+
+                # Add to grouped data
+                grouped_data.setdefault(strat_key, {
+                    "layer": "County",
+                    "geoid": geoid,
+                    "topic": "FVDEYLCV",
+                    "stratification": strat_label,
+                    "period": period,
+                    "value": 0,
+                })["value"] += total_value
+            
+        
+            # Calculate the 'Unknown' values for each grouped data
+            # for (strat_label, period, group_by, group_by_value,record.county), data in grouped_data.items():
+                
+            #     geoid = county_geoid_map.get(record.county).geoid if record.county in county_geoid_map else "Error"  
+            #     if  group_by_value == "Unknown":
+                    
+            #         known_total = group_by_sums.get(group_by, 0)
+                    
+                    
+            #         max_group_total = max(group_by_sums.values(), default=0)
+                    
+            #         data["value"] = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
+            #     # #Assign "UNK7" or "UNK8" for all Gender/Grade Level unknowns
+                # #Ensure "UNK7" or "UNK8" are only assigned if they exist in redacted_county_map
+               
+                #     if group_by == "Gender" :
+                #         data["stratification"] = "UNK7" 
+                #         #logger.info(f"{data["geoid"]} and county is {record.county}geoid is {geoid}")
+                        
+                #         #logger.info(f"Data Value at this point {data["value"]} and county is {record.county}geoid is {geoid}")
+                #     elif group_by == "Grade Level" :
+                #         data["stratification"] = "UNK8"
+                        
                 
 
-                #Group by stratification and county
+            # STEP 4: Bulk Insert Transformed Data
+            transformed_data = [
+                CountyLayerTransformation(**{
+                    "layer": data["layer"],
+                    "geoid": data["geoid"],
+                    "topic": data["topic"],
+                    "stratification": data["stratification"],
+                    "period": data["period"],
+                    "value": data["value"]
+                }) for data in grouped_data.values() if data["value"] != 0
+            ]
 
-                strat_key = (stratification, record.county)
-                if strat_key not in grouped_data:
-                    grouped_data[strat_key] = {
-                        "layer": "County",
-                        "geoid":  geoid if geoid else "Error",
-                        "topic": "FVDEYLCV",
-                        "stratification": stratification,
-                        "period": period,
-                        "value": int(record.student_count) if record.student_count.isdigit() else 0,
-                    }
-                else:
-                    grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+            # Insert transformed data
+            if transformed_data:
+                with transaction.atomic():
+                    CountyLayerTransformation.objects.all().delete()
+                    CountyLayerTransformation.objects.bulk_create(transformed_data)
+                logger.info(f"Successfully transformed {len(transformed_data)} records.")
+            else:
+                logger.info("No transformed data to insert.")
 
-            # Prepare transformed data for bulk insertion
-                # Create a transformation entry
-                transformed_data = [
-                    CountyLayerTransformation(
-                layer=data["layer"],
-                geoid=data["geoid"],
-                topic=data["topic"],
-                stratification=data["stratification"],
-                period=data["period"],
-                value=data["value"],
-                ) for data in grouped_data.values()
-                ]
-
-            # Insert transformed data in bulk
-            with transaction.atomic():
-                CountyLayerTransformation.objects.all().delete()  # Clear existing data
-                CountyLayerTransformation.objects.bulk_create(transformed_data)
-
-            logger.info(f"Successfully transformed {len(transformed_data)} records.")
             return True
 
         except Exception as e:
-            logger.error(f"Error during County Layer Transformation: {e}")
-        return False
+            tb = traceback.extract_tb(e.__traceback__)
+            line_number = tb[-1][1]
+            logger.error(f"Error during County Layer Transformation: {e} at line number {line_number}")
+            return False
 
 
     def transform_Metopio_StateWideLayer(self):

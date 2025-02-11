@@ -1,29 +1,50 @@
 {% extends "base_generic.html" %}
 
 {% block content %}
+<style>
+    .pagination {
+      margin-top: 20px;
+      text-align: center;
+    }
+  
+    .pagination a {
+      margin: 0 5px;
+      text-decoration: none;
+      color: rgb(0, 38, 255);
+    }
+  
+    .pagination span {
+      margin: 0 5px;
+      color: grey;
+    }
+  
+    .pagination a:hover {
+      text-decoration: underline;
+    }
+</style>
 <h1>County Layer Transformation</h1>
 
 <!-- Display paginated data -->
-<table>
+<table border="1">
     <thead>
         <tr>
-            <th>Layer</th>
-            <th>GEOID</th>
-            <th>Topic</th>
-            <th>Stratification</th>
-            <th>Period</th>
-            <th>Value</th>
+            <th>Layer </th>
+            <th>GEOID </th>
+            <th>Topic </th>
+            <th>Stratification </th>
+            <th>Period </th>
+            <th>Value </th>
         </tr>
     </thead>
     <tbody>
         {% for item in data %}
         <tr>
-            <td>{{ item.layer }}</td>
-            <td>{{ item.geoid }}</td>
-            <td>{{ item.topic }}</td>
-            <td>{{ item.stratification }}</td>
-            <td>{{ item.period }}</td>
-            <td>{{ item.value }}</td>
+            <td>{{ item.layer }} </td>
+            <td>{{ item.geoid }} </td>
+            <td>{{ item.topic }} </td>
+            <td>{{ item.stratification }} </td>
+            <td>{{ item.period }} </td>
+            <td>{{ item.value }} </td>
         </tr>
         {% endfor %}
     </tbody>
