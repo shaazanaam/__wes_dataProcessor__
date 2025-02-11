@@ -206,6 +206,7 @@ class DataTransformer:
                 group_by_sums[group_by] = group_by_sums.get(group_by, 0) + total_value
                 #logger.info(f"Group by sums: {group_by_sums}")
                 # Store original 'Unknown' values for later calculation
+                #logger.info(f"Group by value is {group_by_value}")
                 if group_by_value == "Unknown":
                     
                     original_unknowns[(strat_label, period, group_by)] = total_value
