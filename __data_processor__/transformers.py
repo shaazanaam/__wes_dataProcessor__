@@ -226,28 +226,28 @@ class DataTransformer:
                 })["value"] += total_value
             
         
-            # Calculate the 'Unknown' values for each grouped data
-            # for (strat_label, period, group_by, group_by_value,record.county), data in grouped_data.items():
+            #Calculate the 'Unknown' values for each grouped data
+            for (strat_label, period, group_by, group_by_value,record.county), data in grouped_data.items():
                 
-            #     geoid = county_geoid_map.get(record.county).geoid if record.county in county_geoid_map else "Error"  
-            #     if  group_by_value == "Unknown":
+                geoid = county_geoid_map.get(record.county).geoid if record.county in county_geoid_map else "Error"  
+                if  group_by_value == "Unknown":
                     
-            #         known_total = group_by_sums.get(group_by, 0)
+                    known_total = group_by_sums.get(group_by, 0)
                     
                     
-            #         max_group_total = max(group_by_sums.values(), default=0)
+                    max_group_total = max(group_by_sums.values(), default=0)
                     
-            #         data["value"] = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
-            #     # #Assign "UNK7" or "UNK8" for all Gender/Grade Level unknowns
-                # #Ensure "UNK7" or "UNK8" are only assigned if they exist in redacted_county_map
+                    data["value"] = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
+                # #Assign "UNK7" or "UNK8" for all Gender/Grade Level unknowns
+                #Ensure "UNK7" or "UNK8" are only assigned if they exist in redacted_county_map
                
-                #     if group_by == "Gender" :
-                #         data["stratification"] = "UNK7" 
-                #         #logger.info(f"{data["geoid"]} and county is {record.county}geoid is {geoid}")
+                    if (group_by == "Gender" and group_by_value == "Unknown"):
+                        data["stratification"] = "UNK7" 
+                        #logger.info(f"{data["geoid"]} and county is {record.county}geoid is {geoid}")
                         
-                #         #logger.info(f"Data Value at this point {data["value"]} and county is {record.county}geoid is {geoid}")
-                #     elif group_by == "Grade Level" :
-                #         data["stratification"] = "UNK8"
+                        #logger.info(f"Data Value at this point {data["value"]} and county is {record.county}geoid is {geoid}")
+                    elif (group_by == "Grade Level" and group_by_value == "Unknown"):
+                        data["stratification"] = "UNK8"
                         
                 
 
