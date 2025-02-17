@@ -19,6 +19,7 @@ from django.db import transaction
 from django.db import models
 import logging
 import traceback
+from collections import defaultdict
 from django.db.models import Q, F
 from django.contrib import messages
 logger = logging.getLogger(__name__)
@@ -180,15 +181,72 @@ class DataTransformer:
 
             logger.info(f"County GEOID entries count: {len(county_geoid_map)}")
 
-            # STEP 2: Refresh dataset to include "Unknown" records
+            # STEP 2: Fetch dataset (No need to process "Unknown" separately)
             school_data = SchoolData.objects.filter(
-                models.Q(school_name="[Districtwide]") &
-                models.Q(county__in=county_geoid_map.keys())
+                models.Q(school_name="[Districtwide]") & models.Q(county__in=county_geoid_map.keys())
             )
             logger.info(f"Refetched school data count: {school_data.count()}")
-
+            
+            #HANDLE UNKOWN
+            
+            group_totals =defaultdict(int)
+            all_students_totals = 0
+            
+            #Compute totals per GROUP_BY and track "All Students" total
+            
+            for record in school_data:               
+                group_totals[record.group_by] += int(record.student_count)
+                if record.group_by == "All Students":
+                    all_students_totals += int(record.student_count)
+            
+            group_by_totals = {}
+            
+            for record in school_data:
+                key=(record.county,record.group_by,record.group_by_value)
+                group_by_totals[key] = group_totals[record.group_by]   
+            
+                #logger.info(f"******Group by totals: {group_by_totals}  = and *****Group totals: {group_totals}")
+            
+            new_unknown_records = []
+            updated_unknown_records = {}
+            
+            for (record.county,record.group_by,record.group_by_value), total in group_by_totals.items():
+                if record.group_by =="All Students":
+                    continue  
+                if total < all_students_totals:
+                    difference = all_students_totals - total
+                    logger.info(f"Difference {difference} for {record.group_by} {record.group_by_value}= {all_students_totals} - {total}")
+                    
+                    
+                    
+               
+                    
+                        # #Create new "Unknown" record
+                        # new_unknown_records.append(
+                        #     SchoolData(
+                        #         school_name=record.school_name,
+                        #         county=record.county,
+                        #         group_by=record.group_by,
+                        #         group_by_value="Unknown",
+                        #         school_year=record.school_year,
+                        #         student_count=str(difference),  # Keep redacted data
+                        #         stratification=record.stratification,
+                        #         agency_type=record.agency_type,
+                        #         cesa=record.cesa,
+                        #         district_code=record.district_code,
+                        #         school_code=record.school_code,
+                        #         grade_group=record.grade_group,
+                        #         charter_ind=record.charter_ind,
+                        #         district_name=record.district_name,
+                        #         percent_of_group=record.percent_of_group,
+                        #     ))
+    
+    
+            
+            
+               
             # STEP 3: Group Data
-            grouped_data, group_by_sums, original_unknowns = {}, {}, {}
+            grouped_data = {}
 
             for record in school_data:
                 period = f"{record.school_year.split('-')[0]}-20{record.school_year.split('-')[1]}" if "-" in record.school_year else record.school_year
@@ -202,19 +260,6 @@ class DataTransformer:
                 total_value = int(record.student_count) if record.student_count.isdigit() else 0
                 strat_key = (strat_label, period, group_by, group_by_value, record.county)
 
-                # Track group_by sums
-                group_by_sums[group_by] = group_by_sums.get(group_by, 0) + total_value
-                #logger.info(f"Group by sums: {group_by_sums}")
-                # Store original 'Unknown' values for later calculation
-                #logger.info(f"Group by value is {group_by_value}")
-                if group_by_value == "Unknown":
-                    
-                    original_unknowns[(strat_label, period, group_by)] = total_value
-                    logger.info(f"Original Unknowns: {original_unknowns}")
-                    known_total = group_by_sums.get(group_by, 0)
-                    max_group_total = max(group_by_sums.values(), default=0)
-                    total_value = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
-
                 # Add to grouped data
                 grouped_data.setdefault(strat_key, {
                     "layer": "County",
@@ -224,49 +269,23 @@ class DataTransformer:
                     "period": period,
                     "value": 0,
                 })["value"] += total_value
-            
-        
-            #Calculate the 'Unknown' values for each grouped data
-            for (strat_label, period, group_by, group_by_value,record.county), data in grouped_data.items():
-                
-                geoid = county_geoid_map.get(record.county).geoid if record.county in county_geoid_map else "Error"  
-                if  group_by_value == "Unknown":
-                    
-                    known_total = group_by_sums.get(group_by, 0)
-                    
-                    
-                    max_group_total = max(group_by_sums.values(), default=0)
-                    
-                    data["value"] = max_group_total - known_total + original_unknowns.get((strat_label, period, group_by), 0)
-                # #Assign "UNK7" or "UNK8" for all Gender/Grade Level unknowns
-                #Ensure "UNK7" or "UNK8" are only assigned if they exist in redacted_county_map
-               
-                    if (group_by == "Gender" and group_by_value == "Unknown"):
-                        data["stratification"] = "UNK7" 
-                        #logger.info(f"{data["geoid"]} and county is {record.county}geoid is {geoid}")
-                        
-                        #logger.info(f"Data Value at this point {data["value"]} and county is {record.county}geoid is {geoid}")
-                    elif (group_by == "Grade Level" and group_by_value == "Unknown"):
-                        data["stratification"] = "UNK8"
-                        
-                
 
             # STEP 4: Bulk Insert Transformed Data
             transformed_data = [
-                CountyLayerTransformation(**{
-                    "layer": data["layer"],
-                    "geoid": data["geoid"],
-                    "topic": data["topic"],
-                    "stratification": data["stratification"],
-                    "period": data["period"],
-                    "value": data["value"]
-                }) for data in grouped_data.values() if data["value"] != 0
+                CountyLayerTransformation(
+                    layer=data["layer"],
+                    geoid=data["geoid"],
+                    topic=data["topic"],
+                    stratification=data["stratification"],
+                    period=data["period"],
+                    value=data["value"]
+                ) for data in grouped_data.values() if data["value"] != 0
             ]
 
             # Insert transformed data
             if transformed_data:
                 with transaction.atomic():
-                    CountyLayerTransformation.objects.all().delete()
+                    CountyLayerTransformation.objects.all().delete()  # Consider using bulk_update
                     CountyLayerTransformation.objects.bulk_create(transformed_data)
                 logger.info(f"Successfully transformed {len(transformed_data)} records.")
             else:

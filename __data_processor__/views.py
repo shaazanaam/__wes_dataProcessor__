@@ -28,6 +28,7 @@ from django.db import transaction, connection
 from django.core.paginator import Paginator
 from django.contrib import messages  # For adding feedback messages
 from .transformers import DataTransformer
+from collections import defaultdict
 
 
 
@@ -188,9 +189,12 @@ def handle_uploaded_file(f, stratifications_file=None):
                     }
 
                     for row in reader:
+                        if row["STUDENT_COUNT"] == "*":
+                            continue
                         group_by = "Grade Level" if row["GROUP_BY"] == "Grade" else row["GROUP_BY"]
                         combined_key = group_by + row["GROUP_BY_VALUE"]
                         stratification = strat_map.get(combined_key)
+                        unknown_key = (group_by, "Unknown")
                         
                         data.append(
                             SchoolData(
@@ -211,97 +215,9 @@ def handle_uploaded_file(f, stratifications_file=None):
                                 stratification=stratification,
                             )
                         )
-                
-                    # STEP 1: Identify redacted entries & precompute "Unknown" values
-                    redacted_county_map = {}
-                    new_unknown_records = []
-                    existing_unknowns = set(SchoolData.objects.filter(group_by_value="Unknown").values_list("group_by", "county"))
 
-                    for record in data:
-                        if record.student_count == '*':
-                            redacted_county_map[(record.group_by, record.group_by_value, record.county)] = record
-
-                    # Insert "Unknown" records immediately
-                    for (group_by, group_by_value, county), record in redacted_county_map.items():
-                        if record.group_by_value != "Unknown" and (group_by, county) not in existing_unknowns:
-                            stratification = None
-                            if group_by == "Gender":
-                                stratification, _ = Stratification.objects.get_or_create(group_by="Gender", group_by_value="Unknown", label_name="UNK7")
-                            elif group_by == "Grade Level":
-                                stratification, _ = Stratification.objects.get_or_create(group_by="Grade Level", group_by_value="Unknown", label_name="UNK8")
-                            else:
-                                stratification = record.stratification  # Default stratification
-
-                            new_record = SchoolData(
-                                school_name=record.school_name,
-                                county=county,
-                                group_by=record.group_by,
-                                group_by_value="Unknown",
-                                school_year=record.school_year,
-                                student_count="*",  # Keep redacted data
-                                stratification=stratification,
-                                agency_type=record.agency_type,
-                                cesa=record.cesa,
-                                district_code=record.district_code,
-                                school_code=record.school_code,
-                                grade_group=record.grade_group,
-                                charter_ind=record.charter_ind,
-                                district_name=record.district_name,
-                                percent_of_group=record.percent_of_group,
-                            )
-
-                            if not SchoolData.objects.filter(county=new_record.county, group_by=new_record.group_by, group_by_value=new_record.group_by_value).exists():
-                                new_unknown_records.append(new_record)
-
-                    # Bulk insert "Unknown" records
-                    if new_unknown_records:
-                        SchoolData.objects.bulk_create(new_unknown_records)
-                        logger.info(f"Added {len(new_unknown_records)} new 'Unknown' records.")
-                        # Ensure 'Unknown' values for Gender and Grade Level are added manually
-                        # We have to add the missing 'Unknown' values manually becasue the Gender and the Grade Level
-                        #did not have
+                            
                     
-                    
-                    
-                    
-                    missing_unknowns = [
-                        {"group_by": "Gender", "group_by_value": "Unknown", "label_name": "UNK7"},
-                        {"group_by": "Grade Level", "group_by_value": "Unknown", "label_name": "UNK8"}
-                    ]
-
-                    for entry in missing_unknowns:
-                        stratification = strat_map.get(f"{entry['group_by']}Unknown")
-                        if stratification is None:
-                            stratification, _ = Stratification.objects.get_or_create(
-                                group_by=entry["group_by"],
-                                group_by_value="Unknown",
-                                label_name=entry["label_name"]
-                            )
-                            strat_map[f"{entry['group_by']}Unknown"] = stratification
-
-                        exists_in_school_data = SchoolData.objects.filter(group_by=entry["group_by"], group_by_value="Unknown").exists()
-                        if not exists_in_school_data:
-                            data.append(
-                                SchoolData(
-                                    school_year="2023-24",  # Default year
-                                    agency_type="Unknown",
-                                    cesa="Unknown",
-                                    county="Unknown",
-                                    district_code="000",
-                                    school_code="000",
-                                    grade_group="Unknown",
-                                    charter_ind="Unknown",
-                                    district_name="Unknown",
-                                    school_name="Unknown",
-                                    group_by=entry["group_by"],
-                                    group_by_value="Unknown",
-                                    student_count="0",  # Placeholder
-                                    percent_of_group="0",
-                                    stratification=stratification,
-                                )
-                            )
-                            logger.info(f"Manually inserted missing Unknown value for {entry['group_by']}")
-
                     # Insert new data into the database
                     SchoolData.objects.bulk_create(data)
                     logger.info(f"{len(data)} records inserted into the database")
@@ -317,6 +233,7 @@ def handle_uploaded_file(f, stratifications_file=None):
     except Exception as e:
         logger.error(f"Error handling file upload: {e}")
         raise
+
 
 
 # data_processor/views.py
