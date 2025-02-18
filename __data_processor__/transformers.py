@@ -442,7 +442,7 @@ class DataTransformer:
 
             new_unknown_records = []
             unique_records = set()
-
+            #logger.info(f"Group by totals: {group_by_totals}")
             for (record.group_by, record.group_by_value), total in group_by_totals.items():
                 if record.group_by == "All Students":
                     continue
