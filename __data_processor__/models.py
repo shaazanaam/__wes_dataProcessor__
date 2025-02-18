@@ -71,7 +71,7 @@ class SchoolData(models.Model):
         verbose_name="Address Details",
         related_name="school_data") 
     def __str__(self):
-        return f"{self.school_name} - {self.district_name}"
+        return f"{self.county} - {self.student_count}"
     
         # Set related_name to 'school_address_details' in the
         # ManyToManyField to avoid conflicts with the reverse
@@ -82,7 +82,8 @@ class SchoolData(models.Model):
         # removing them and then  replacing them with the foreign key relationship to the SchoolAddressFile model would break the existing logic
         #Adding the foreignKey relationship(address_details)  allows you to introduce new functionality to the existing dataProcessing logic
         # without breaking the existing logic
-        # This will also prevent all the insert and update look ups in the SchoolData model to avoid traversing the SchoolAddressFile model
+        # This will also prevent all the insert and update look ups in the SchoolData model to avoid traversing the 
+        # SchoolAddressFile model
         # to fetch the address details of the school
         # this will also let you work independently with the school_code and the district_code field in the SchoolData model
         # without you having to always verify that the actual value actaully exists in the SchoolAddressFile model
