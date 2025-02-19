@@ -357,6 +357,8 @@ class DataTransformer:
                 geoid = county_geoid_map.get(record.county).geoid if county_geoid_map.get(record.county) else "Error"
 
                 if geoid == "Error":
+                    logger.warning(f"GEOID not found for zip code: {zip_code}")
+                    continue
                     logger.warning(f"County GEOID not found for county: {record.county}")
 
                 total_value = int(record.student_count) if record.student_count.isdigit() else 0
@@ -1119,8 +1121,7 @@ class DataTransformer:
             # Fetch and join SchoolData with SchoolAddressFile dynamically
             school_data = (
                 SchoolData.objects.filter(
-                    # Exclude records with school names in square brackets
-                    ~Q(district_name__startswith='[') &
+                    # Exclude records with school names in square brackets                   
                     ~Q(school_name__startswith='['),
                     county__in=['Outagamie', 'Winnebago', 'Calumet']
                         # Filter for specified counties
@@ -1137,16 +1138,20 @@ class DataTransformer:
             # HANDLE UNKNOWNS
             combined_dataset = list(school_data) # Convert QuerySet to list
             group_totals = defaultdict(int)
-            all_students_totals = 0
+            all_students_totals = defaultdict(int)
 
             # Compute totals per GROUP_BY and track "All Students" total
+            # We have to do this groupBy total for each school code which is not null
 
             for record in combined_dataset:
-                group_totals[record.group_by] += int(record.student_count)
+                if record.school_code is None:
+                    continue
+                key =(record.district_code,record.school_code, record.group_by)
+                group_totals[key] += int(record.student_count)
                 if record.group_by == "All Students":
-                    all_students_totals += int(record.student_count)
-                    
-            logger.info(f"Group totals: {group_totals}")
+                    all_students_totals[record.district_code,record.school_code] += int(record.student_count)
+        
+
             group_by_totals = {}
 
             # We are assigning this new group_totals dictionary to group_by_totals dictionary  to 
@@ -1155,16 +1160,12 @@ class DataTransformer:
             # as the key to store the corresponding totals from the group totals
             # Purpose of this dictionary is to store the totals of the group_by  for each unique combination of county , district_code, school_code, group_by, group_by_value
             #Structure of this dictionary :  A dictionary with a tuple of (county, district_code, school_code, group_by, group_by_value, zip_code) as the key and the total of the group_by as the value
-            for record in combined_dataset:
-                for address_detail in record.address_details.all():
-                    zip_code = address_detail.zip_code
-                    key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value, record.student_count,zip_code)
-                    group_by_totals[key] = group_totals[record.group_by]
-            
-            for key, total in group_by_totals.items():
-                county, district_code, school_code, group_by, group_by_value, student_count, zip_code = key
-                if group_by_value == "Unknown":
-                    logger.info(f"Group by totals **: {group_by} {group_by_value} {total}")
+            for record in combined_dataset:         
+                key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value,record.stratification)
+                group_by_totals[key] = group_totals[(record.district_code,record.school_code,record.group_by)]
+        
+          
+    
            
         
             new_unknown_records = []
@@ -1176,15 +1177,16 @@ class DataTransformer:
             # After we have built that dictionary then we are now trying to add the unknown entries in the data
             # And we would be adding this entry by creating memory objects rather than directly adding to the database
             # This is because we need to refer to the address details of the original record when we are building the transformed data
-            key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value, zip_code)
+            
             for key, total in group_by_totals.items():
+                county, district_code, school_code, group_by, group_by_value,stratification = key
                 if group_by == "All Students":
                     continue
-                if total < all_students_totals:
-                    difference = all_students_totals - total
-                    #logger.info(f"Difference {difference} for {county} {group_by} {group_by_value}= {all_students_totals} - {total}")
+                if total < all_students_totals[(district_code,school_code)]:
+                    difference = all_students_totals[(district_code,school_code)] - total
+                    #logger.info(f"****Difference {difference} for {school_code} {group_by} {group_by_value}= {all_students_totals[(district_code,school_code)]} - {total}")
                 
-                    unique_key = (county, district_code, school_code, group_by, group_by_value, zip_code)
+                    unique_key = (county, district_code, school_code, group_by, group_by_value)
 
                     # Check if there is already an "Unknown" record for this group_by
                     found_unknown = False
@@ -1193,99 +1195,92 @@ class DataTransformer:
                     if key[4] == "Unknown":
                             group_by_totals[key] += difference
                             found_unknown = True
-                            logger.info(f"Updated existing unknown record for {county}, {district_code}, {school_code}, {group_by}, {zip_code} with difference {difference}")
+                            logger.info(f"Updated existing unknown record for {county}, {district_code}, {school_code}, {group_by} with difference {difference}")
                             continue     
-                    else:                    
-                        # Only append if this combination hasn't been seen before
-                                new_record = SchoolData(
-                                    school_name=record.school_name,
-                                    county=county,
-                                    group_by=group_by,
-                                    group_by_value="Unknown",
-                                    school_year=record.school_year,
-                                    student_count=str(difference),  # Keep redacted data
-                                    stratification=record.stratification,
-                                    agency_type=record.agency_type,
-                                    cesa=record.cesa,
-                                    district_code=district_code,
-                                    school_code=school_code,
-                                    grade_group=record.grade_group,
-                                    charter_ind=record.charter_ind,
-                                    district_name=record.district_name,
-                                    percent_of_group=record.percent_of_group,
-                                )
-                                # Copy address details from the original record
-                                new_record._address_details = list(record.address_details.all())
-                                new_unknown_records.append(new_record)
-                                logger.info(f"Added new unique unknown record for {unique_key}")
-                            # else:
-                            #     logger.info(f"Duplicate unknown record for {unique_key}")
-
+                                       
+                    # Only append if this combination hasn't been seen before
+                    if unique_key not in unique_records:
+                        unique_records.add(unique_key)
+                        # Create new "Unknown" record
+                        new_record = SchoolData(
+                            school_name=record.school_name,
+                            county=county,
+                            group_by=group_by,
+                            group_by_value="Unknown",
+                            school_year=record.school_year,
+                            student_count=str(difference),  # Keep redacted data
+                            stratification=stratification,
+                            agency_type=record.agency_type,
+                            cesa=record.cesa,
+                            district_code=district_code,
+                            school_code=school_code,
+                            grade_group=record.grade_group,
+                            charter_ind=record.charter_ind,
+                            district_name=record.district_name,
+                            percent_of_group=record.percent_of_group,
+                          
+                        )
+                            # Copy address details from the original record
+                        new_record._address_details = list(record.address_details.all())
+                        new_unknown_records.append(new_record)
+                        #logger.info(f"Added new unique unknown record for {new_record.group_by}{new_record.group_by_value}{new_record.stratification.label_name}")
+                    else:
+                         logger.info(f"Duplicate unknown record for {unique_key}")
+            logger.info(f"****New unknown records count: {len(new_unknown_records)}")
             # for record in new_unknown_records:
             #     address_details = ", ".join([f"District_code {detail.lea_code}, School_code {detail.school_code}, Zip Code {detail.zip_code}" for detail in record._address_details])
             #     logger.info(f"New unknown record: {address_details:<15} {record.group_by:<20} {record.group_by_value:<35} {record.student_count}")
 
             # Add the new unknown records to the combined dataset
+            
+           
             combined_dataset.extend(new_unknown_records)
+            
+            #Look up stratification for each new unknown record
+            
+            
+            strat_map = {
+                f"{strat.group_by}{strat.group_by_value}": strat
+                for strat in Stratification.objects.all()
+            }
+            for record in combined_dataset:
+                combined_key = record.group_by + record.group_by_value
+                record.stratification = strat_map.get(combined_key)
+                #logger.info(f"Stratification for {combined_key} is {record.stratification.label_name}")
 
-            # Look up stratification for each new unknown record
-            if new_unknown_records:
-                strat_map = {
-                    f"{strat.group_by}{strat.group_by_value}": strat
-                    for strat in Stratification.objects.all()
-                }
-
-                for record in new_unknown_records:
-                    combined_key = record.group_by + record.group_by_value
-                    stratification = strat_map.get(combined_key)
-                    if stratification:
-                        record.stratification = stratification
-                    else:
-                        logger.warning(f"No stratification found for {combined_key}")
-
-                logger.info(f"Combined dataset count: {len(combined_dataset)}")
+            logger.info(f"Combined dataset count: {len(combined_dataset)}")
 
             # Process records for transformation
             grouped_data = {}
            
             for record in combined_dataset:
-                # Iterate over the related address_details objects
                 address_details_list = getattr(record, '_address_details', [])
                 if not address_details_list:
-                    address_details_list = list(record.address_details.all())
-                for address_detail in address_details_list:
+                    address_details_list = list(record.address_details.all())  
+                for address_details in address_details_list:
+                    period = f"{record.school_year.split('-')[0]}-20{record.school_year.split('-')[1]}" if "-" in record.school_year else record.school_year
+                    strat_label = record.stratification.label_name if record.stratification else "Error"
+              
                     # Extract the zip code
-                    zip_code = address_detail.zip_code
-
-                    # Map the zip code to its GEOID
-                    geoid = zip_code_geoid_map.get(zip_code, "Error")
+                    zip_code = address_details.zip_code 
+                
+                    geoid=zip_code_geoid_map.get(zip_code, "Error")
                     if geoid == "Error":
                         logger.warning(f"GEOID not found for zip code: {zip_code}")
                         continue
 
-                    # Transform the period field
-                    school_year = record.school_year
-                    if '-' in school_year:
-                        start_year, end_year = school_year.split('-')
-                        period = f"{start_year}-20{end_year}"  # Transform to 2023-2024 format
-                    else:
-                        period = school_year
-
-                    # Default to "Error" if stratification is None
-                    stratification = record.stratification.label_name if record.stratification else "Error"
-
                     # Group by stratification and period
-                    strat_key = (stratification, geoid)
+                    strat_key = (geoid,strat_label,period)
 
                     if strat_key not in grouped_data:
-                        grouped_data[strat_key] = {
-                            "layer": "Zip code",
-                            "geoid": geoid,
-                            "topic": "FVDEYLCV",
-                            "stratification": stratification,
-                            "period": period,
-                            "value": int(record.student_count) if record.student_count.isdigit() else 0,
-                        }
+                            grouped_data[strat_key] = {
+                                "layer": "Zip code",
+                                "geoid": geoid,
+                                "topic": "FVDEYLCV",
+                                "stratification": strat_label,
+                                "period": period,
+                                "value": int(record.student_count) if record.student_count.isdigit() else 0,
+                            }
                     else:
                         grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
 
