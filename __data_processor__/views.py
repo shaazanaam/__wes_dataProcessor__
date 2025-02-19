@@ -299,8 +299,13 @@ def upload_file(request):
                 # The id value in the school_data dictionary
                 # ({'id': 2080317, 'district_code': '8022', 'school_code': '8148'}) 
                 # represents the primary key of the corresponding SchoolData object
-                # Please also understand that key for the  dictioary for the address map ais actually the tuple of the lea_code and the school_code
+                # Please also understand that key for the  dictionary for the address_map is actually the tuple of the lea_code and the school_code
                 # so the address_map.get((school["district_code"], school["school_code"])) will return the id of the address
+                # that corresponds to the school["district_code"] and school["school_code"]
+                # The records_to_insert is a list of tuples containing the school["id"] and the address_id
+                # The address_id is the id of the address that corresponds to the school["district_code"] and school["school_code"]
+                # The address_id is gotten from the address_map dictionary
+                # The address_map dictionary is a dictionary that maps the tuple of the lea_code and the school_code to the id of the address
                 
                 
                 m2m_table_name = SchoolData.address_details.through._meta.db_table
