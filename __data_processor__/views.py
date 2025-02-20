@@ -269,79 +269,79 @@ def upload_file(request):
             # We will be tryng to handle the Many to Many relationship population of the SchoolData model
             # by bypassing  the bulk updates and rather use the native SQL for batch processing
             
-            try:
-                logger.info("Populating address_details for the SchoolData model...")
+            # try:
+            #     logger.info("Populating address_details for the SchoolData model...")
 
-                # Fetch all the necessary data upfront
-                school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
-                school_data = SchoolData.objects.values("id", "district_code", "school_code")
+            #     # Fetch all the necessary data upfront
+            #     school_address_data = SchoolAddressFile.objects.values("id", "lea_code", "school_code")
+            #     school_data = SchoolData.objects.values("id", "district_code", "school_code")
 
-                # Create a dictionary mapping (lea_code, school_code) from the  SchoolAddressFile ID
+            #     # Create a dictionary mapping (lea_code, school_code) from the  SchoolAddressFile ID
                 
-                address_map = {
-                    (address["lea_code"], address["school_code"]): address["id"]
-                    for address in school_address_data
-                }
+            #     address_map = {
+            #         (address["lea_code"], address["school_code"]): address["id"]
+            #         for address in school_address_data
+            #     }
 
-                # Prepare records for the intermediate table
-                # Please notice that we are not going to be inserting the entire school object or the complete dictionary
-                # of the school data -- we are just inserting  the value corresponding to id key in the school dictionary
-                # What then goes into the records_to_insert is the id of the school and the id of the address
-                # records_to_insert =  is a list of tuples containing the school["id"] and the address_id
-                # please also note that both the school["id"] and the address_id are the primary keys 
-                # of the corresponding school records in the SchoolData and SchoolAddressFile models respectively
-                # Why only ids are Inserted:
-                # The Many-to-Many relationship between the SchoolData and SchoolAddressFile  is being stored in an intermediate 
-                # table that Django creates automatically. This table has two columns: schooldata_id and schooladdressfile_id.
-                # this table only needs to know which schooldata_id( the id of the school) corresponds to which 
-                # schooladdressfile_id (the id of the address).
-                # Storing only the id values ensures minimal redundancy and optimal storage.
-                # The id value in the school_data dictionary
-                # ({'id': 2080317, 'district_code': '8022', 'school_code': '8148'}) 
-                # represents the primary key of the corresponding SchoolData object
-                # Please also understand that key for the  dictionary for the address_map is actually the tuple of the lea_code and the school_code
-                # so the address_map.get((school["district_code"], school["school_code"])) will return the id of the address
-                # that corresponds to the school["district_code"] and school["school_code"]
-                # The records_to_insert is a list of tuples containing the school["id"] and the address_id
-                # The address_id is the id of the address that corresponds to the school["district_code"] and school["school_code"]
-                # The address_id is gotten from the address_map dictionary
-                # The address_map dictionary is a dictionary that maps the tuple of the lea_code and the school_code to the id of the address
+            #     # Prepare records for the intermediate table
+            #     # Please notice that we are not going to be inserting the entire school object or the complete dictionary
+            #     # of the school data -- we are just inserting  the value corresponding to id key in the school dictionary
+            #     # What then goes into the records_to_insert is the id of the school and the id of the address
+            #     # records_to_insert =  is a list of tuples containing the school["id"] and the address_id
+            #     # please also note that both the school["id"] and the address_id are the primary keys 
+            #     # of the corresponding school records in the SchoolData and SchoolAddressFile models respectively
+            #     # Why only ids are Inserted:
+            #     # The Many-to-Many relationship between the SchoolData and SchoolAddressFile  is being stored in an intermediate 
+            #     # table that Django creates automatically. This table has two columns: schooldata_id and schooladdressfile_id.
+            #     # this table only needs to know which schooldata_id( the id of the school) corresponds to which 
+            #     # schooladdressfile_id (the id of the address).
+            #     # Storing only the id values ensures minimal redundancy and optimal storage.
+            #     # The id value in the school_data dictionary
+            #     # ({'id': 2080317, 'district_code': '8022', 'school_code': '8148'}) 
+            #     # represents the primary key of the corresponding SchoolData object
+            #     # Please also understand that key for the  dictionary for the address_map is actually the tuple of the lea_code and the school_code
+            #     # so the address_map.get((school["district_code"], school["school_code"])) will return the id of the address
+            #     # that corresponds to the school["district_code"] and school["school_code"]
+            #     # The records_to_insert is a list of tuples containing the school["id"] and the address_id
+            #     # The address_id is the id of the address that corresponds to the school["district_code"] and school["school_code"]
+            #     # The address_id is gotten from the address_map dictionary
+            #     # The address_map dictionary is a dictionary that maps the tuple of the lea_code and the school_code to the id of the address
                 
                 
-                m2m_table_name = SchoolData.address_details.through._meta.db_table
-                records_to_insert = []
+            #     m2m_table_name = SchoolData.address_details.through._meta.db_table
+            #     records_to_insert = []
 
-                for school in school_data:
-                    address_id = address_map.get((school["district_code"], school["school_code"]))
-                    if address_id:
-                        records_to_insert.append((school["id"], address_id))
+            #     for school in school_data:
+            #         address_id = address_map.get((school["district_code"], school["school_code"]))
+            #         if address_id:
+            #             records_to_insert.append((school["id"], address_id))
 
-                # Delete existing Many-to-Many relationships
-                with connection.cursor() as cursor:
-                    cursor.execute(f"DELETE FROM {m2m_table_name}")
+            #     # Delete existing Many-to-Many relationships
+            #     with connection.cursor() as cursor:
+            #         cursor.execute(f"DELETE FROM {m2m_table_name}")
 
-                # Insert new relationships in batches
-                # values =", ".join(f"({school_id}, {address_id})" for school_id, address_id in records_to_insert)
-                # Converts the batch into a string representation for the SQL insert query
-                # for example for a batch of [(1, 2), (3, 4), (5, 6)]
-                # the values will be "(1, 2), (3, 4), (5, 6)"
-                # then cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
-                # inserts the values into the intermediate table M2M  join table
-                # for a batch of 500 records at a time this means inserting 500 rows in a single query
+            #     # Insert new relationships in batches
+            #     # values =", ".join(f"({school_id}, {address_id})" for school_id, address_id in records_to_insert)
+            #     # Converts the batch into a string representation for the SQL insert query
+            #     # for example for a batch of [(1, 2), (3, 4), (5, 6)]
+            #     # the values will be "(1, 2), (3, 4), (5, 6)"
+            #     # then cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
+            #     # inserts the values into the intermediate table M2M  join table
+            #     # for a batch of 500 records at a time this means inserting 500 rows in a single query
                 
-                batch_size = 500
-                with connection.cursor() as cursor:
-                    for i in range(0, len(records_to_insert), batch_size):
-                        batch = records_to_insert[i:i+batch_size]
-                        values = ", ".join(f"({school_id}, {address_id})" for school_id, address_id in batch)
-                        cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
+            #     batch_size = 500
+            #     with connection.cursor() as cursor:
+            #         for i in range(0, len(records_to_insert), batch_size):
+            #             batch = records_to_insert[i:i+batch_size]
+            #             values = ", ".join(f"({school_id}, {address_id})" for school_id, address_id in batch)
+            #             cursor.execute(f"INSERT INTO {m2m_table_name} (schooldata_id, schooladdressfile_id) VALUES {values}")
 
-                logger.info(f"Successfully populated {len(records_to_insert)} address details for SchoolData records.")
+            #     logger.info(f"Successfully populated {len(records_to_insert)} address details for SchoolData records.")
 
-            except Exception as e:
-                logger.error(f"Error populating address details: {e}")
-                raise   
-            # Redirect to the success page or back to upload with a success message
+            # except Exception as e:
+            #     logger.error(f"Error populating address details: {e}")
+            #     raise   
+            # # Redirect to the success page or back to upload with a success message
 
             return redirect(
                 f"{reverse('upload')}?message=File uploaded successfully. Now you can run the transformation."

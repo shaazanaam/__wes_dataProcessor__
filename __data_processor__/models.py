@@ -44,7 +44,10 @@ class SchoolAddressFile(models.Model):
     def __str__(self):
         return f"{self.school_name} ({self.district_name})"
     
-
+    def save(self, *args, **kwargs):
+        self.school_code = self.school_code.lstrip("0")
+        self.lea_code = self.lea_code.lstrip("0")
+        super(SchoolAddressFile, self).save(*args, **kwargs)
     
 # Main Model is the School Data Model
 class SchoolData(models.Model):
@@ -65,11 +68,11 @@ class SchoolData(models.Model):
     place = models.CharField(max_length=100, null=True, blank=True)
     stratification = models.ForeignKey(Stratification, on_delete=models.SET_NULL, null=True, blank=True)
     geoid = models.ForeignKey(CountyGEOID, on_delete=models.SET_NULL, null=True, blank=True)
-    address_details = models.ManyToManyField(
-        SchoolAddressFile, 
-        blank=True,
-        verbose_name="Address Details",
-        related_name="school_data") 
+    # address_details = models.ManyToManyField(
+    #     SchoolAddressFile, 
+    #     blank=True,
+    #     verbose_name="Address Details",
+    #     related_name="school_data") 
     def __str__(self):
         return f"{self.county} - {self.student_count}"
     
@@ -100,6 +103,12 @@ class SchoolData(models.Model):
         #If you're confident that all your SchoolData rows will always match a corresponding
         # SchoolAddressFile entry, you can replace district_code and school_code with ForeignKey fields.
         # However, this approach offers flexibility and avoids potential data or migration
+    #REMOVING LEADING ZEROS FROM THE SCHOOL_CODE AND DISTRICT_CODE
+    def save(self, *args, **kwargs):
+        self.school_code = self.school_code.lstrip("0")
+        self.district_code = self.district_code.lstrip("0")
+        super(SchoolData, self).save(*args, **kwargs)
+
 
 class TransformedSchoolData(models.Model):
     year = models.CharField(max_length=7)
