@@ -1327,14 +1327,14 @@ class DataTransformer:
                         address_details_list = []  # Empty list for in-memory objects
 
                 if not address_details_list:
-                    logger.warning(f"⚠️ No address details found for: {record.school_name} (School Code: {record.school_code})")
+                    logger.warning(f"No address details found for: {record.school_name} (School Code: {record.school_code})")
                     continue  # Skip this record
 
                 for address in address_details_list:
                     # Now process the address safely
                     zip_code = address.zip_code
                     if zip_code == "54915":
-                        logger.info(f"✅ Found 54915 - School {record.school_name}, District {record.district_name}, County {record.county}, Student Count {record.student_count}")
+                        logger.info(f"Found 54915 - School {record.school_name}, District {record.district_name}, County {record.county}, Student Count {record.student_count}")
                
            # Check how many records exist with zip_code 54915 in the raw dataset
             logger.info("=== DEBUG: Checking all records with ZIP Code 54915 ===")
