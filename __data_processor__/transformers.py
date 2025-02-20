@@ -1163,10 +1163,7 @@ class DataTransformer:
             for record in combined_dataset:         
                 key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value,record.stratification)
                 group_by_totals[key] = group_totals[(record.district_code,record.school_code,record.group_by)]
-        
-          
-    
-           
+
         
             new_unknown_records = []
             unique_records = set()
@@ -1238,23 +1235,24 @@ class DataTransformer:
             
             #Look up stratification for each new unknown record
             
-            
+            # Now re aligning all the stratification for the new records that we just added
             strat_map = {
                 f"{strat.group_by}{strat.group_by_value}": strat
                 for strat in Stratification.objects.all()
             }
             for record in combined_dataset:
                 combined_key = record.group_by + record.group_by_value
-                record.stratification = strat_map.get(combined_key)
+                record.stratification = strat_map.get(combined_key)   #assigning the stratification for the data
                 #logger.info(f"Stratification for {combined_key} is {record.stratification.label_name}")
 
             logger.info(f"Combined dataset count: {len(combined_dataset)}")
 
             # Process records for transformation
             grouped_data = {}
-           
+            #Debug
+            
             for record in combined_dataset:
-                address_details_list = getattr(record, '_address_details', [])
+                address_details_list = getattr(record, '_address_details', []) #Getting a cached list of the address details
                 if not address_details_list:
                     address_details_list = list(record.address_details.all())  
                 for address_details in address_details_list:
@@ -1263,14 +1261,17 @@ class DataTransformer:
               
                     # Extract the zip code
                     zip_code = address_details.zip_code 
-                
+                    district_code = record.district_code
+                    school_code = address_details.school_code
+                    
+                    # Map the zip code to its GEOID
                     geoid=zip_code_geoid_map.get(zip_code, "Error")
                     if geoid == "Error":
                         logger.warning(f"GEOID not found for zip code: {zip_code}")
                         continue
 
                     # Group by stratification and period
-                    strat_key = (geoid,strat_label,period)
+                    strat_key = (strat_label,geoid)
 
                     if strat_key not in grouped_data:
                             grouped_data[strat_key] = {
@@ -1283,8 +1284,104 @@ class DataTransformer:
                             }
                     else:
                         grouped_data[strat_key]["value"] += int(record.student_count) if record.student_count.isdigit() else 0
+               
+                    
+            #DEBUG to check the total students after the transformation 
+            #Confirm Records Have the Address Details
+            for record in combined_dataset:
+               address_details_list = getattr(record, '_address_details', None)
 
-                 
+# If _address_details is not cached, fetch from the database
+            if address_details_list is None:
+                    if record.id:  # Ensure it's saved before querying
+                        address_details_list = list(record.address_details.all())
+                    else:
+                        address_details_list = []  # Empty list for in-memory objects
+
+            if not address_details_list:
+                    logger.warning(f"⚠️ No address details found for record: {record.school_name} (School Code: {record.school_code})")
+
+            if not address_details_list:
+                   logger.warning(f"No address details found for record: {record}")
+                   
+                   
+            #DEBUG to check for the ZIP code mapping and Ensure that the 54915 exists
+            #Before calculating the total_raw verify that  any record has the  ZIP code 54915
+            zip_54915_count=sum(
+                1 for record in combined_dataset
+                if getattr(record,"geoid",None) == "54915" for addr in record.address_details.all()
+            )
+            logger.info(f"Total records with ZIP code 54915: {zip_54915_count}")
+            
+            #Validate total_raw Befor Computation 
+            # ADD these logs before summing student_count
+            
+            for record in combined_dataset:
+                address_details_list = getattr(record, '_address_details', None)
+
+                # If the record is saved in the database, fetch address details
+                if address_details_list is None:
+                    if record.id:  # Ensure the record is saved before querying
+                        address_details_list = list(record.address_details.all())
+                    else:
+                        address_details_list = []  # Empty list for in-memory objects
+
+                if not address_details_list:
+                    logger.warning(f"⚠️ No address details found for: {record.school_name} (School Code: {record.school_code})")
+                    continue  # Skip this record
+
+                for address in address_details_list:
+                    # Now process the address safely
+                    zip_code = address.zip_code
+                    if zip_code == "54915":
+                        logger.info(f"✅ Found 54915 - School {record.school_name}, District {record.district_name}, County {record.county}, Student Count {record.student_count}")
+               
+           # Check how many records exist with zip_code 54915 in the raw dataset
+            logger.info("=== DEBUG: Checking all records with ZIP Code 54915 ===")
+            count_54915 = 0
+            for record in combined_dataset:
+                address_details_list = getattr(record, '_address_details', []) or list(record.address_details.all())
+                for address in address_details_list:
+                    if address.zip_code == "54915":
+                        count_54915 += 1
+                        logger.info(f"Record: School {record.school_name}, District {record.district_name}, County {record.county}, Student Count {record.student_count}")
+
+            logger.info(f"Total raw records with ZIP 54915: {count_54915}")
+
+            total_raw = 0
+            logger.info("=== DEBUG: Computing total_raw for ZIP Code 54915 ===")
+
+            for record in combined_dataset:
+                address_details_list = getattr(record, '_address_details', []) or list(record.address_details.all())
+
+                for address in address_details_list:
+                    if address.zip_code == "54915":
+                        try:
+                            student_count = int(record.student_count) if str(record.student_count).isdigit() else 0
+                            total_raw += student_count
+                            logger.info(f"Adding {student_count} from School {record.school_name}, School Code {record.school_code}")
+                        except Exception as e:
+                            logger.error(f"Error converting student_count for record {record.school_name}: {e}")
+
+            logger.info(f"Raw Total: {total_raw}")
+
+                        
+            
+            #Identify the missing records
+            missing_records =[
+                record for record in combined_dataset
+                if getattr(record,"geoid",None) == "54915" and  record.STUDENT_COUNT not in [data["value"] for data in grouped_data.values()]
+            ]
+            
+            if missing_records:
+                logger.warning(f"Missing records: {missing_records}")
+            else:
+                logger.info("No missing records found")
+            
+            
+            
+            
+            
             # Prepare transformed data for bulk insertion
             transformed_data = [
                 ZipCodeLayerTransformation(
