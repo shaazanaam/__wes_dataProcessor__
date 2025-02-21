@@ -316,7 +316,7 @@ def upload_file(request):
             #         if address_id:
             #             records_to_insert.append((school["id"], address_id))
 
-            #     # Delete existing Many-to-Many relationships
+            #     # Delete existing Many-to-Many relationshipythops
             #     with connection.cursor() as cursor:
             #         cursor.execute(f"DELETE FROM {m2m_table_name}")
 
