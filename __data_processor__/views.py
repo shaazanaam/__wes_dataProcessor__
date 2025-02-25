@@ -189,7 +189,7 @@ def handle_uploaded_file(f, stratifications_file=None):
                     }
 
                     for row in reader:
-                        if row["STUDENT_COUNT"] == "*":
+                        if row["STUDENT_COUNT"] == "*" or row["STUDENT_COUNT"] == "0":
                             continue
                         group_by = "Grade Level" if row["GROUP_BY"] == "Grade" else row["GROUP_BY"]
                         combined_key = group_by + row["GROUP_BY_VALUE"]

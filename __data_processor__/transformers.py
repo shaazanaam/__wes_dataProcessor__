@@ -199,7 +199,7 @@ class DataTransformer:
                 total_value = int(float(record.student_count)) if record.student_count.replace('.', '', 1).isdigit() else 0
                 
                 # Group by stratification, period, group_by, and group_by_value    
-                strat_key = (strat_label, period, group_by, group_by_value)
+                strat_key = (strat_label)
                 
                 
                 # Group and aggregate by strat_label, period, group_by, and group_by_value
@@ -1153,6 +1153,7 @@ class DataTransformer:
                 group_totals[key] += int(record.student_count)
                 if record.group_by == "All Students":
                     all_students_totals[record.district_code,record.school_code] += int(record.student_count)
+                
         
 
             group_by_totals = {}
@@ -1164,7 +1165,7 @@ class DataTransformer:
             # Purpose of this dictionary is to store the totals of the group_by  for each unique combination of county , district_code, school_code, group_by, group_by_value
             #Structure of this dictionary :  A dictionary with a tuple of (county, district_code, school_code, group_by, group_by_value, zip_code) as the key and the total of the group_by as the value
             for record in combined_dataset:
-                key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value,record.stratification)
+                key = (record.county, record.district_code, record.school_code, record.group_by, record.group_by_value,record.stratification, record.student_count)
                 group_by_totals[key] = group_totals[(record.district_code,record.school_code,record.group_by)]
 
         
@@ -1179,16 +1180,23 @@ class DataTransformer:
             # This is because we need to refer to the address details of the original record when we are building the transformed data
             
             for key, total in group_by_totals.items():
-                county, district_code, school_code, group_by, group_by_value,stratification = key
-                if group_by == "All Students":
-                    continue
-                if total < all_students_totals[(district_code,school_code)]:
-                    difference = all_students_totals[(district_code,school_code)] - total
-                    #logger.info(f"****Difference {difference} for {school_code} {group_by} {group_by_value}= {all_students_totals[(district_code,school_code)]} - {total}")
+                county, district_code, school_code, group_by, group_by_value,stratification,student_count = key
+                # if group_by == "All Students":
+                #     #check if the student count fo 
+                #     continue            Changed::removed this in 2/23
                 
+                if all_students_totals[(district_code,school_code)] == 0: 
+                    logger.info(f"****DistrictCode for {district_code} {group_by} {group_by_value}= {all_students_totals[(district_code,school_code)]} - {total}")
+                
+                
+                
+                
+                if total < all_students_totals[(district_code,school_code)]:   #Changed ::Added student_count == 0 in 2/23
+                    difference = all_students_totals[(district_code,school_code)] - total
+                    
                     unique_key = (county, district_code, school_code, group_by, "Unknown")
                     
-                    # Adjust the key structure to match unique_key
+                    #If there is already an unknown record for this combination, update the student count
                     if group_by_value == "Unknown":
                             group_by_totals[key] += difference
                             logger.info(f"Updated existing unknown record for {county}, {district_code}, {school_code}, {group_by} with difference {difference}")
@@ -1239,6 +1247,57 @@ class DataTransformer:
                 for strat in Stratification.objects.all()
             }
 
+            #Now in this combined data set list we need to loop through the group_by_map list and 
+            # check if the combined data set has a missing group_by record for every school code
+            # If it does not have a record then we need to add a new record with the group_by as 
+            # the one that is missing from the key of the map below which why is we are making the group_by_map a dictionary
+            group_by_map={
+                f"{strat.group_by}": strat
+                for strat in Stratification.objects.all()
+            }
+            logger.info(f"Stratification Mapping: {group_by_map}")
+
+            #loop through the combined data set and check for each school code if that record
+            #has missing group_by records and if it does then we need to add a new record for that group_by
+
+            #Create a dictionary to group records by school code
+            school_code_groups =defaultdict(list)
+            for record in combined_dataset:
+                school_code_groups[record.school_code].append(record)
+
+            #Loop through the grouped records and check for the missing group_by keys
+            for school_code, records in school_code_groups.items():
+                existing_group_by_keys ={record.group_by for record in records}
+                missing_group_by_keys = set(group_by_map.keys()) - existing_group_by_keys
+
+                for missing_group_by_key in missing_group_by_keys:
+
+                    # Create a new record for the missing group_by key
+                    new_record = SchoolData(
+                        school_year=records[0].school_year,
+                        agency_type=records[0].agency_type or "Unknown",
+                        cesa=records[0].cesa,
+                        county=records[0].county,
+                        district_code=records[0].district_code,
+                        school_code=records[0].school_code,
+                        grade_group=records[0].grade_group or "Unknown",
+                        charter_ind=records[0].charter_ind or "Unknown",
+                        district_name=records[0].district_name or "Unknown",
+                        school_name=records[0].school_name or "Unknown",
+                        group_by=missing_group_by_key,
+                        group_by_value="Unknown",
+                        student_count=str(all_students_totals[(records[0].district_code,records[0].school_code)]),
+                        percent_of_group=records[0].percent_of_group or "0",
+                        place=records[0].place or "",
+                        stratification=records[0].stratification,
+                    )
+                    combined_dataset.append(new_record)
+                    logger.info(f"""Added new record for missing group_by: {missing_group_by_key} 
+                    #             for count {all_students_totals[(records[0].district_code,records[0].school_code)]}
+                    #             for school code: {school_code}""")    
+
+
+            #REALIGNING FINAL  stratification 
            
             for record in combined_dataset:
                 combined_key = record.group_by + record.group_by_value
@@ -1257,7 +1316,7 @@ class DataTransformer:
                 (d.lea_code.lstrip("0"), d.school_code.lstrip("0")): d.zip_code
                 for d in SchoolAddressFile.objects.all()
             }
-            logger.info(f"Zip Code Mapping: {zip_Code_Map}")
+            #logger.info(f"Zip Code Mapping: {zip_Code_Map}")
             
              # Convert zip_Code_Map to a list of dictionaries
             zip_code_map_list = [
@@ -1274,7 +1333,7 @@ class DataTransformer:
                 
             
             
-            # Assign a Zip code to each record in the combined dataset
+            # Assign a Zip code to each record in the combined dataset to view the records
             for record in combined_dataset:
                 record.district_code = str(record.district_code).strip().lstrip("0")
                 record.school_code = str(record.school_code).strip().lstrip("0")
@@ -1284,7 +1343,7 @@ class DataTransformer:
                 record.zip_code = zip_code
             
             
-            #Sorting the COmbined data set to view how this look
+            #Sorting the COmbined data set to view how this look Just to Generate how the data looks until now
             combined_dataset.sort(key=lambda x: (x.district_code, x.school_code, x.group_by,x.school_name))
             
             #THis is just for logging and debugging
@@ -1301,6 +1360,8 @@ class DataTransformer:
                     "district_code": cleaned_district_code,
                     "school_code": cleaned_school_code,
                     "school_name": record.school_name,
+                    "group_by": record.group_by,
+                    "group_by_value": record.group_by_value,
                     "Stratification": record.stratification.label_name,
                     "student_count": int(record.student_count),
                     "zip_code": record.zip_code
