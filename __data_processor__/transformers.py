@@ -1143,7 +1143,10 @@ class DataTransformer:
                 record.school_code=record.school_code.lstrip("0")
                 record.district_code=record.district_code.lstrip("0")
 
-            # Compute totals per GROUP_BY and track "All Students" total
+            logger.info(f"#1 Normalized the school_code and district_code for {len(combined_dataset)} records")  ##3408
+            
+
+            # Compute totals per GROUP_BY and track "All Students" per zip code total
             # We have to do this groupBy total for each school code which is not null
 
             for record in combined_dataset:
@@ -1153,7 +1156,8 @@ class DataTransformer:
                 group_totals[key] += int(record.student_count)
                 if record.group_by == "All Students":
                     all_students_totals[record.district_code,record.school_code] += int(record.student_count)
-                
+
+
         
 
             group_by_totals = {}
@@ -1181,16 +1185,7 @@ class DataTransformer:
             
             for key, total in group_by_totals.items():
                 county, district_code, school_code, group_by, group_by_value,stratification,student_count = key
-                # if group_by == "All Students":
-                #     #check if the student count fo 
-                #     continue            Changed::removed this in 2/23
-                
-                if all_students_totals[(district_code,school_code)] == 0: 
-                    logger.info(f"****DistrictCode for {district_code} {group_by} {group_by_value}= {all_students_totals[(district_code,school_code)]} - {total}")
-                
-                
-                
-                
+
                 if total < all_students_totals[(district_code,school_code)]:   #Changed ::Added student_count == 0 in 2/23
                     difference = all_students_totals[(district_code,school_code)] - total
                     
@@ -1237,17 +1232,9 @@ class DataTransformer:
             logger.info(f"****New unknown records count: {len(new_unknown_records)}")
 
             combined_dataset.extend(new_unknown_records)
+            logger.info(f"#3 Normalized the school_code and district_code for {len(combined_dataset)} records")  ##3560
             
-            
-            #Look up stratification for each new unknown record
-            
-            #REALIGNING STRATIFICATIONS SINCE WE RE ADDED THE UNKNOWNS
-            strat_map = {
-                f"{strat.group_by}{strat.group_by_value}": strat
-                for strat in Stratification.objects.all()
-            }
-
-            #Now in this combined data set list we need to loop through the group_by_map list and 
+                        #Now in this combined data set list we need to loop through the group_by_map list and 
             # check if the combined data set has a missing group_by record for every school code
             # If it does not have a record then we need to add a new record with the group_by as 
             # the one that is missing from the key of the map below which why is we are making the group_by_map a dictionary
@@ -1260,51 +1247,103 @@ class DataTransformer:
             #loop through the combined data set and check for each school code if that record
             #has missing group_by records and if it does then we need to add a new record for that group_by
 
-            #Create a dictionary to group records by school code
+            #Create a dictionary to group records by school code and district code 
             school_code_groups =defaultdict(list)
             for record in combined_dataset:
-                school_code_groups[record.school_code].append(record)
+                school_code_groups[record.school_code,record.district_code].append(record)   ##Change Added the district code 
+      
 
             #Loop through the grouped records and check for the missing group_by keys
-            for school_code, records in school_code_groups.items():
+            for (school_code,district_code), records in school_code_groups.items():
                 existing_group_by_keys ={record.group_by for record in records}
                 missing_group_by_keys = set(group_by_map.keys()) - existing_group_by_keys
 
                 for missing_group_by_key in missing_group_by_keys:
-
+                    reference_record = next((r for r in records if r.group_by == "All Students"), None)
                     # Create a new record for the missing group_by key
                     new_record = SchoolData(
-                        school_year=records[0].school_year,
-                        agency_type=records[0].agency_type or "Unknown",
-                        cesa=records[0].cesa,
-                        county=records[0].county,
-                        district_code=records[0].district_code,
-                        school_code=records[0].school_code,
-                        grade_group=records[0].grade_group or "Unknown",
-                        charter_ind=records[0].charter_ind or "Unknown",
-                        district_name=records[0].district_name or "Unknown",
-                        school_name=records[0].school_name or "Unknown",
+                        school_year=reference_record.school_year,
+                        agency_type=reference_record.agency_type or "Unknown",
+                        cesa=reference_record.cesa,
+                        county=reference_record.county,
+                        district_code=reference_record.district_code,
+                        school_code=reference_record.school_code,
+                        grade_group=reference_record.grade_group or "Unknown",
+                        charter_ind=reference_record.charter_ind or "Unknown",
+                        district_name=reference_record.district_name or "Unknown",
+                        school_name=reference_record.school_name or "Unknown",
                         group_by=missing_group_by_key,
                         group_by_value="Unknown",
-                        student_count=str(all_students_totals[(records[0].district_code,records[0].school_code)]),
-                        percent_of_group=records[0].percent_of_group or "0",
-                        place=records[0].place or "",
-                        stratification=records[0].stratification,
+                        student_count=str(all_students_totals[reference_record.district_code, reference_record.school_code]),
+                        percent_of_group=reference_record.percent_of_group or "0",
+                        place=reference_record.place or "",
+                        stratification=reference_record.stratification,
                     )
                     combined_dataset.append(new_record)
                     logger.info(f"""Added new record for missing group_by: {missing_group_by_key} 
                     #             for count {all_students_totals[(records[0].district_code,records[0].school_code)]}
-                    #             for school code: {school_code}""")    
+                    #             for school code: {school_code}
+                    #             for school name: {records[0].school_name}""")    
+
+            
+            
+            
+            
+            
+            logger.info(f"#3 Normalized the school_code and district_code for {len(combined_dataset)} records")   ##3422
 
 
-            #REALIGNING FINAL  stratification 
+            # Create a dictionary to group records by school code
+            school_code_groups_xlx_log = defaultdict(list)
+            for record in combined_dataset:
+                school_code_groups_xlx_log[record.school_code, district_code].append(record)
+
+            # Prepare data for export
+            export_data = []
+            for (school_code,district_code), records in school_code_groups_xlx_log.items():
+                for record in records:
+                    export_data.append({
+                        "school_code": school_code,
+                        "school_year": record.school_year,
+                        "agency_type": record.agency_type,
+                        "cesa": record.cesa,
+                        "county": record.county,
+                        "district_code": record.district_code,
+                        "school_code": record.school_code,
+                        "grade_group": record.grade_group,
+                        "charter_ind": record.charter_ind,
+                        "district_name": record.district_name,
+                        "school_name": record.school_name,
+                        "group_by": record.group_by,
+                        "group_by_value": record.group_by_value,
+                        "student_count": record.student_count,
+                        "percent_of_group": record.percent_of_group,
+                        "place": record.place,
+                        "stratification": record.stratification.label_name if record.stratification else "Unknown",
+                    })
+
+            # Create a DataFrame from the export data
+            df = pd.DataFrame(export_data)
+
+            # Export the DataFrame to an Excel file
+            df.to_excel("school_code_groups.xlsx", index=False)
+            logger.info("School code groups exported to school_code_groups.xlsx")
+
+            
+
+
+            #REALIGNING STRATIFICATIONS SINCE WE RE ADDED THE UNKNOWNS
+            strat_map = {
+                f"{strat.group_by}{strat.group_by_value}": strat
+                for strat in Stratification.objects.all()
+            }
            
             for record in combined_dataset:
                 combined_key = record.group_by + record.group_by_value
                 record.stratification = strat_map.get(combined_key)   #assigning the stratification for the data
             #logger.info(f"Stratification for {combined_key} is {record.stratification.label_name}")
 
-            logger.info(f"Combined dataset count: {len(combined_dataset)}")
+            logger.info(f"#4 Combined dataset count After Stratification: {len(combined_dataset)}")
 
            
             #REALIGNING THE ZIP CODE
@@ -1334,6 +1373,7 @@ class DataTransformer:
             
             
             # Assign a Zip code to each record in the combined dataset to view the records
+            # This is where the zip code gets added and will be used for the final layering logic
             for record in combined_dataset:
                 record.district_code = str(record.district_code).strip().lstrip("0")
                 record.school_code = str(record.school_code).strip().lstrip("0")
