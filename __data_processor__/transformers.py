@@ -101,8 +101,7 @@ class DataTransformer:
             # Fetch filtered school data, including 'Unknown' county and school_name
             school_data = SchoolData.objects.filter(
                 county__in=['Outagamie', 'Winnebago', 'Calumet'],
-                school_name__in=['[Districtwide]']
-            )
+             ).exclude(school_name='[Districtwide]')
             logger.info(f"Filtered school data count: {school_data.count()}")
 
             #Add the UNKOWNN VALUES TO THE MAIN DATA SET
@@ -118,6 +117,7 @@ class DataTransformer:
                 if record.group_by == "All Students":
                     all_students_totals += int(record.student_count)
 
+            
             group_by_totals = {}
 
 
@@ -254,8 +254,8 @@ class DataTransformer:
 
             # STEP 2: Fetch dataset (No need to process "Unknown" separately)
             school_data = SchoolData.objects.filter(
-                models.Q(school_name="[Districtwide]") & models.Q(county__in=county_geoid_map.keys())
-            )
+                models.Q(county__in=county_geoid_map.keys())
+            ).exclude(school_name="[Districtwide]")
             logger.info(f"Refetched school data count: {school_data.count()}")
             
             #HANDLE UNKOWN
@@ -346,7 +346,27 @@ class DataTransformer:
                     record.stratification = stratification
                 else:
                     logger.warning(f"No stratification found for {combined_key}")
- 
+
+            #Create the exel file for the data how it looks before the grouping
+            log_data =[]
+            for record in combined_dataset:
+                cleaned_group_by = record.group_by.replace(" ", "_")
+                cleaned_group_by_value = record.group_by_value.replace(" ", "_")
+                cleaned_county = record.county.replace(" ", "_")
+                log_data.append({
+                    "school_name": record.school_name,
+                    "county": cleaned_county,
+                    "group_by": cleaned_group_by,
+                    "group_by_value": cleaned_group_by_value,
+                    "Stratification": record.stratification.label_name,
+                    "student_count": record.student_count,
+                    
+
+                })
+
+            df = pd.DataFrame(log_data)
+            df.to_excel("before_grouping_county.xlsx", index=False)
+            
             # STEP 3: Group Data
             grouped_data = {}
 
@@ -1234,7 +1254,7 @@ class DataTransformer:
             combined_dataset.extend(new_unknown_records)
             logger.info(f"#3 Normalized the school_code and district_code for {len(combined_dataset)} records")  ##3560
             
-                        #Now in this combined data set list we need to loop through the group_by_map list and 
+            #Now in this combined data set list we need to loop through the group_by_map list and 
             # check if the combined data set has a missing group_by record for every school code
             # If it does not have a record then we need to add a new record with the group_by as 
             # the one that is missing from the key of the map below which why is we are making the group_by_map a dictionary
@@ -1357,7 +1377,7 @@ class DataTransformer:
             }
             #logger.info(f"Zip Code Mapping: {zip_Code_Map}")
             
-             # Convert zip_Code_Map to a list of dictionaries
+            # Convert zip_Code_Map to a list of dictionaries
             zip_code_map_list = [
                 {"lea_code": key[0], "school_code": key[1], "zip_code": value}
                 for key, value in zip_Code_Map.items()
@@ -1591,8 +1611,6 @@ class DataTransformer:
 
             for key, total in group_by_totals.items():
                 county, district_code, school_code, group_by, group_by_value,stratification = key
-                if group_by == "All Students":
-                    continue
                 if total < all_students_totals[(district_code,school_code)]:
                     difference = all_students_totals[(district_code,school_code)] - total
                     #logger.info(f"****Difference {difference} for {school_code} {group_by} {group_by_value}= {all_students_totals[(district_code,school_code)]} - {total}")
@@ -1641,7 +1659,104 @@ class DataTransformer:
     
                 # Create a combined dataset in memory
             combined_dataset.extend(new_unknown_records)  # Convert QuerySet to list
-        
+            #Now in this combined data set list we need to loop through the group_by_map list and 
+            # check if the combined data set has a missing group_by record for every school code
+            # If it does not have a record then we need to add a new record with the group_by as 
+            # the one that is missing from the key of the map below which why is we are making the group_by_map a dictionary
+            group_by_map={
+                f"{strat.group_by}": strat
+                for strat in Stratification.objects.all()
+            }
+            logger.info(f"Stratification Mapping: {group_by_map}")
+
+            #loop through the combined data set and check for each school code if that record
+            #has missing group_by records and if it does then we need to add a new record for that group_by
+
+            #Create a dictionary to group records by school code and district code 
+            school_code_groups =defaultdict(list)
+            for record in combined_dataset:
+                school_code_groups[record.school_code,record.district_code].append(record)   ##Change Added the district code 
+      
+
+            #Loop through the grouped records and check for the missing group_by keys
+            for (school_code,district_code), records in school_code_groups.items():
+                existing_group_by_keys ={record.group_by for record in records}
+                missing_group_by_keys = set(group_by_map.keys()) - existing_group_by_keys
+
+                for missing_group_by_key in missing_group_by_keys:
+                    reference_record = next((r for r in records if r.group_by == "All Students"), None)
+                    # Create a new record for the missing group_by key
+                    new_record = SchoolData(
+                        school_year=reference_record.school_year,
+                        agency_type=reference_record.agency_type or "Unknown",
+                        cesa=reference_record.cesa,
+                        county=reference_record.county,
+                        district_code=reference_record.district_code,
+                        school_code=reference_record.school_code,
+                        grade_group=reference_record.grade_group or "Unknown",
+                        charter_ind=reference_record.charter_ind or "Unknown",
+                        district_name=reference_record.district_name or "Unknown",
+                        school_name=reference_record.school_name or "Unknown",
+                        group_by=missing_group_by_key,
+                        group_by_value="Unknown",
+                        student_count=str(all_students_totals[reference_record.district_code, reference_record.school_code]),
+                        percent_of_group=reference_record.percent_of_group or "0",
+                        place=reference_record.place or "",
+                        stratification=reference_record.stratification,
+                    )
+                    combined_dataset.append(new_record)
+                    logger.info(f"""Added new record for missing group_by: {missing_group_by_key} 
+                    #             for count {all_students_totals[(records[0].district_code,records[0].school_code)]}
+                    #             for school code: {school_code}
+                    #             for school name: {records[0].school_name}""")    
+
+            
+            
+            
+            
+            
+            logger.info(f"#3 Normalized the school_code and district_code for {len(combined_dataset)} records")   ##3422
+
+
+            # Create a dictionary to group records by school code
+            school_code_groups_xlx_log = defaultdict(list)
+            for record in combined_dataset:
+                school_code_groups_xlx_log[record.school_code, district_code].append(record)
+
+            # Prepare data for export
+            export_data = []
+            for (school_code,district_code), records in school_code_groups_xlx_log.items():
+                for record in records:
+                    export_data.append({
+                        "school_code": school_code,
+                        "school_year": record.school_year,
+                        "agency_type": record.agency_type,
+                        "cesa": record.cesa,
+                        "county": record.county,
+                        "district_code": record.district_code,
+                        "school_code": record.school_code,
+                        "grade_group": record.grade_group,
+                        "charter_ind": record.charter_ind,
+                        "district_name": record.district_name,
+                        "school_name": record.school_name,
+                        "group_by": record.group_by,
+                        "group_by_value": record.group_by_value,
+                        "student_count": record.student_count,
+                        "percent_of_group": record.percent_of_group,
+                        "place": record.place,
+                        "stratification": record.stratification.label_name if record.stratification else "Unknown",
+                    })
+
+            # Create a DataFrame from the export data
+            df = pd.DataFrame(export_data)
+
+            # Export the DataFrame to an Excel file
+            df.to_excel("school_code_groups_city.xlsx", index=False)
+            logger.info("School code groups exported to school_code_groups_city.xlsx")
+
+
+
+
             #REALIGN STRATIFICATION SINCE WE ADDED NEW RECORDS
             strat_map = {
                 f"{strat.group_by}{strat.group_by_value}": strat
@@ -1669,7 +1784,41 @@ class DataTransformer:
                 combined_key = (record.district_code, record.school_code)
                 city = city_code_map.get(combined_key, "Not Found")
                 setattr(record, "city", city)
-    
+
+            #Sorting the COmbined data set to view how this look Just to Generate how the data looks until now
+            combined_dataset.sort(key=lambda x: (x.district_code, x.school_code, x.group_by,x.school_name))
+            
+            #THis is just for logging and debugging
+            # for record in combined_dataset:
+            #     logger.info(f"Record: {record.district_code:<{15}} {record.school_code:<{15}} {record.school_name:<{40}} {record.zip_code:<{15}} ")
+
+            # Collect log data into a list
+            log_data = []
+            for record in combined_dataset:
+                cleaned_district_code = record.district_code
+                cleaned_school_code = record.school_code
+
+                log_data.append({
+                    "district_code": cleaned_district_code,
+                    "school_code": cleaned_school_code,
+                    "school_name": record.school_name,
+                    "group_by": record.group_by,
+                    "group_by_value": record.group_by_value,
+                    "Stratification": record.stratification.label_name,
+                    "student_count": int(record.student_count),
+                    "city": record.city
+                })
+
+                # logger.info(
+                #     f"Record: {cleaned_district_code:<{15}} {cleaned_school_code:<{15}} {record.school_name:<{40}} {record.zip_code:<{15}}"
+                # )
+                        # Create a DataFrame from the log data
+            df = pd.DataFrame(log_data)
+
+            # Export the DataFrame to an Excel file
+            df.to_excel("log_data_city.xlsx", index=False)
+            logger.info("Log data exported to log_data.xlsx")
+
             # Process records for transformation
             grouped_data = {}
             for record in combined_dataset:
